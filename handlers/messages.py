@@ -264,6 +264,14 @@ def _extract_csv_text(file_bytes: bytes) -> str:
     return result
 
 
+def _extract_docx_text(file_bytes: bytes) -> str:
+    """Extract text from a Word .docx file."""
+    from docx import Document
+    doc = Document(io.BytesIO(file_bytes))
+    paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+    return "\n\n".join(paragraphs) if paragraphs else "(No extractable text in document)"
+
+
 def _extract_excel_text(file_bytes: bytes) -> str:
     """Read Excel (.xlsx) and format as a markdown table."""
     from openpyxl import load_workbook
@@ -354,12 +362,20 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if caption:
                 user_message = f"{caption}\n\n{user_message}"
             reply = await run_agent(chat_id, user_message)
+        elif mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" or filename.lower().endswith(".docx"):
+            text = _extract_docx_text(bytes(file_bytes))
+            if len(text) > 15000:
+                text = text[:15000] + "\n...(truncated)"
+            user_message = f"[Word Document: {filename}]\n{text}"
+            if caption:
+                user_message = f"{caption}\n\n{user_message}"
+            reply = await run_agent(chat_id, user_message)
         else:
             try:
                 text = file_bytes.decode("utf-8")
             except UnicodeDecodeError:
                 await update.message.reply_text(
-                    "I can process text files, images, PDFs, CSVs, and Excel files. "
+                    "I can process text files, images, PDFs, CSVs, Excel, and Word (.docx) files. "
                     "This file type isn't supported yet."
                 )
                 return

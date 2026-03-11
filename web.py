@@ -174,11 +174,20 @@ def create_web_app() -> FastAPI:
                 if caption:
                     user_message = f"{caption}\n\n{user_message}"
                 reply = await run_agent(chat_id, user_message)
+            elif mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" or safe_name.lower().endswith(".docx"):
+                from handlers.messages import _extract_docx_text
+                text = _extract_docx_text(file_bytes)
+                if len(text) > 15000:
+                    text = text[:15000] + "\n...(truncated)"
+                user_message = f"[Word Document: {safe_name}]\n{text}"
+                if caption:
+                    user_message = f"{caption}\n\n{user_message}"
+                reply = await run_agent(chat_id, user_message)
             else:
                 try:
                     text = file_bytes.decode("utf-8")
                 except UnicodeDecodeError:
-                    return JSONResponse({"reply": "This file type isn't supported yet. I can process text, PDF, CSV, Excel, and image files.", "files": []})
+                    return JSONResponse({"reply": "This file type isn't supported yet. I can process text, PDF, CSV, Excel, Word (.docx), and image files.", "files": []})
 
                 if len(text) > 10000:
                     text = text[:10000] + "\n...(truncated)"
