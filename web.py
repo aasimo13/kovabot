@@ -729,7 +729,11 @@ def create_web_app() -> FastAPI:
         }
         for key, value in body.items():
             if key in allowed_keys:
-                db.set_setting(key, str(value))
+                # Blank system_prompt clears override, falls back to config.py default
+                if key == "system_prompt" and not str(value).strip():
+                    db.delete_setting(key)
+                else:
+                    db.set_setting(key, str(value))
         return JSONResponse({"ok": True})
 
     # --- Memory management endpoints ---

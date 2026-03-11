@@ -106,7 +106,9 @@ def _build_system_prompt(chat_id: int) -> str:
     facts = db.get_facts(chat_id)
     summary = db.get_conversation_summary(chat_id)
 
-    prompt = db.get_setting("system_prompt", SYSTEM_PROMPT)
+    # DB override only if explicitly set and non-empty; otherwise always use config.py
+    db_prompt = db.get_setting("system_prompt", "")
+    prompt = db_prompt if db_prompt.strip() else SYSTEM_PROMPT
 
     if facts:
         fact_lines = "\n".join(f"- [{f['category']}] {f['key']}: {f['value']}" for f in facts)
