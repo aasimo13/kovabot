@@ -65,6 +65,7 @@ TOOL_STATUS_LABELS = {
     "check_confirmation": "Checking confirmation",
     "get_agent_context": "Inspecting context",
     "run_command": "Running command",
+    "think": "Thinking",
 }
 
 
@@ -305,7 +306,9 @@ async def run_agent(chat_id: int, user_content: str | list, status_callback=None
                 await status_callback(f"{label}...")
 
             result = await _execute_tool(fn_name, fn_args, chat_id)
-            db.log_tool_call(chat_id, fn_name, json.dumps(fn_args), result)
+            # Don't log internal reasoning to tool call history
+            if fn_name != "think":
+                db.log_tool_call(chat_id, fn_name, json.dumps(fn_args), result)
 
             messages.append({
                 "role": "tool",

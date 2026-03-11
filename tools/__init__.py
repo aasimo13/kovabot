@@ -11,6 +11,7 @@ from tools.planning import create_plan, update_plan_step, get_plan
 from tools.confirmation import request_confirmation, check_confirmation
 from tools.agent_introspection import get_agent_context
 from tools.cli import run_command
+from tools.think import think
 
 # Maps function name → callable
 TOOL_REGISTRY: dict[str, callable] = {
@@ -33,6 +34,7 @@ TOOL_REGISTRY: dict[str, callable] = {
     "check_confirmation": check_confirmation,
     "get_agent_context": get_agent_context,
     "run_command": run_command,
+    "think": think,
 }
 
 # Conditionally register GitHub tools
@@ -444,6 +446,24 @@ TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {},
                 "required": [],
+            },
+        },
+    },
+    # Reasoning
+    {
+        "type": "function",
+        "function": {
+            "name": "think",
+            "description": "Think through a problem step-by-step before acting. Use this to reason about complex requests, plan your approach, or work through ambiguity. Your thought is private (not shown to the user). Call this BEFORE other tools when you need to figure out the right approach.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "thought": {
+                        "type": "string",
+                        "description": "Your internal reasoning. Break down the problem, consider what you know, plan what tools to use and in what order.",
+                    },
+                },
+                "required": ["thought"],
             },
         },
     },
