@@ -40,6 +40,8 @@ TOOL_STATUS_LABELS = {
     "github_create_issue": "Creating issue",
     "github_get_pull_request": "Getting PR details",
     "github_list_notifications": "Checking notifications",
+    "github_get_repo_tree": "Browsing repo",
+    "github_get_file_content": "Reading file",
     "ha_list_entities": "Listing devices",
     "ha_get_state": "Checking device state",
     "ha_call_service": "Controlling device",

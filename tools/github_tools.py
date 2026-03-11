@@ -146,3 +146,54 @@ async def github_list_notifications(chat_id: int = 0) -> str:
     except Exception as e:
         logger.error(f"github_list_notifications error: {e}")
         return f"Error listing notifications: {e}"
+
+
+async def github_get_repo_tree(repo: str, path: str = "", branch: str = "", chat_id: int = 0) -> str:
+    """List files and directories in a GitHub repository path."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            ref = f"?ref={branch}" if branch else ""
+            url = f"{GITHUB_API}/repos/{repo}/contents/{path}{ref}"
+            async with session.get(url, headers=_auth_headers(), timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status != 200:
+                    return f"GitHub API error: {resp.status}"
+                contents = await resp.json()
+
+        if isinstance(contents, dict):
+            # Single file, not a directory
+            return f"- {contents['name']} ({contents['type']}, {contents.get('size', 0)} bytes)"
+
+        lines = []
+        dirs = sorted([c for c in contents if c["type"] == "dir"], key=lambda x: x["name"])
+        files = sorted([c for c in contents if c["type"] != "dir"], key=lambda x: x["name"])
+        for item in dirs:
+            lines.append(f"📁 {item['name']}/")
+        for item in files:
+            size = item.get("size", 0)
+            lines.append(f"   {item['name']} ({size} bytes)")
+        return f"Contents of {repo}/{path or '(root)'}:\n" + "\n".join(lines)
+    except Exception as e:
+        logger.error(f"github_get_repo_tree error: {e}")
+        return f"Error listing repo contents: {e}"
+
+
+async def github_get_file_content(repo: str, path: str, branch: str = "", chat_id: int = 0) -> str:
+    """Read the content of a file from a GitHub repository."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            ref = f"?ref={branch}" if branch else ""
+            url = f"{GITHUB_API}/repos/{repo}/contents/{path}{ref}"
+            headers = dict(_auth_headers())
+            headers["Accept"] = "application/vnd.github.raw+json"
+            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status != 200:
+                    return f"GitHub API error: {resp.status}"
+                text = await resp.text()
+
+        # Truncate very large files
+        if len(text) > 8000:
+            text = text[:8000] + f"\n\n... (truncated, {len(text)} total chars)"
+        return f"**{repo}/{path}:**\n```\n{text}\n```"
+    except Exception as e:
+        logger.error(f"github_get_file_content error: {e}")
+        return f"Error reading file: {e}"

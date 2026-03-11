@@ -40,6 +40,7 @@ try:
         from tools.github_tools import (
             github_list_repos, github_search_issues, github_create_issue,
             github_get_pull_request, github_list_notifications,
+            github_get_repo_tree, github_get_file_content,
         )
         TOOL_REGISTRY.update({
             "github_list_repos": github_list_repos,
@@ -47,6 +48,8 @@ try:
             "github_create_issue": github_create_issue,
             "github_get_pull_request": github_get_pull_request,
             "github_list_notifications": github_list_notifications,
+            "github_get_repo_tree": github_get_repo_tree,
+            "github_get_file_content": github_get_file_content,
         })
 except Exception:
     pass
@@ -519,6 +522,38 @@ try:
                         "type": "object",
                         "properties": {},
                         "required": [],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "github_get_repo_tree",
+                    "description": "List files and directories in a GitHub repository. Use this to explore a repo's structure.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "repo": {"type": "string", "description": "Repository in owner/name format."},
+                            "path": {"type": "string", "description": "Path within the repo (empty for root)."},
+                            "branch": {"type": "string", "description": "Branch name (default: repo default branch)."},
+                        },
+                        "required": ["repo"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "github_get_file_content",
+                    "description": "Read the content of a file from a GitHub repository.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "repo": {"type": "string", "description": "Repository in owner/name format."},
+                            "path": {"type": "string", "description": "File path within the repo."},
+                            "branch": {"type": "string", "description": "Branch name (default: repo default branch)."},
+                        },
+                        "required": ["repo", "path"],
                     },
                 },
             },
