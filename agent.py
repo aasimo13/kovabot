@@ -2,6 +2,7 @@ import json
 import asyncio
 import inspect
 import logging
+import time
 
 from openai import AsyncOpenAI
 
@@ -18,20 +19,29 @@ from tools import TOOL_REGISTRY, TOOL_SCHEMAS
 
 logger = logging.getLogger(__name__)
 
+TOOL_STATUS_LABELS = {
+    "brave_search": "Searching the web",
+    "store_fact": "Saving to memory",
+    "recall_facts": "Checking memory",
+    "create_reminder": "Setting reminder",
+    "list_reminders": "Checking reminders",
+    "cancel_reminder": "Cancelling reminder",
+    "execute_python": "Running code",
+    "get_current_datetime": "Checking the time",
+    "fetch_url": "Reading webpage",
+}
+
 
 def _get_client() -> AsyncOpenAI:
-    """Build an AsyncOpenAI client pointed at the right backend."""
     if OPENWEBUI_URL and OPENWEBUI_API_KEY:
         return AsyncOpenAI(
             base_url=f"{OPENWEBUI_URL}/api",
             api_key=OPENWEBUI_API_KEY,
         )
-    # Fallback: direct OpenAI
     return AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 
 async def _get_model(client: AsyncOpenAI) -> str:
-    """Return configured model or auto-detect the first available."""
     if MODEL_ID:
         return MODEL_ID
     try:
@@ -44,22 +54,26 @@ async def _get_model(client: AsyncOpenAI) -> str:
 
 
 def _build_system_prompt(chat_id: int) -> str:
-    """Inject stored facts into the system prompt."""
     facts = db.get_facts(chat_id)
+    summary = db.get_conversation_summary(chat_id)
+
     prompt = SYSTEM_PROMPT
+
     if facts:
         fact_lines = "\n".join(f"- [{f['category']}] {f['key']}: {f['value']}" for f in facts)
         prompt += f"\n\nUser facts from long-term memory:\n{fact_lines}"
+
+    if summary:
+        prompt += f"\n\nSummary of earlier conversation:\n{summary}"
+
     return prompt
 
 
 async def _execute_tool(tool_name: str, arguments: dict, chat_id: int) -> str:
-    """Execute a tool function and return its string result."""
     func = TOOL_REGISTRY.get(tool_name)
     if not func:
         return f"Unknown tool: {tool_name}"
 
-    # Inject chat_id for tools that need it
     sig = inspect.signature(func)
     if "chat_id" in sig.parameters:
         arguments["chat_id"] = chat_id
@@ -74,20 +88,43 @@ async def _execute_tool(tool_name: str, arguments: dict, chat_id: int) -> str:
         return f"Tool error: {e}"
 
 
-async def run_agent(chat_id: int, user_content: str | list) -> str:
+async def _call_llm(client, model, messages, use_tools=True):
+    """Call the LLM with fallback: try with tools, then without."""
+    if use_tools and TOOL_SCHEMAS:
+        try:
+            response = await client.chat.completions.create(
+                model=model,
+                messages=messages,
+                tools=TOOL_SCHEMAS,
+            )
+            if response is not None and response.choices:
+                return response
+            logger.warning("LLM returned empty with tools, retrying without")
+        except Exception as e:
+            logger.error(f"LLM API error (with tools): {e}")
+
+    # Fallback without tools
+    response = await client.chat.completions.create(
+        model=model,
+        messages=messages,
+    )
+    return response
+
+
+async def run_agent(chat_id: int, user_content: str | list, status_callback=None) -> str:
     """
     Main agent loop.
-    user_content can be a string or a list of content blocks (for vision).
+    user_content: string or list of content blocks (for vision).
+    status_callback: async function(status_text) called during tool execution.
     Returns the final assistant text response.
     """
     client = _get_client()
     model = await _get_model(client)
 
-    # Save user message to DB (store text representation)
+    # Save user message to DB
     if isinstance(user_content, str):
         db.save_message(chat_id, "user", user_content)
     else:
-        # For multi-modal content, save a text summary
         text_parts = [p["text"] for p in user_content if p.get("type") == "text"]
         db.save_message(chat_id, "user", " ".join(text_parts) if text_parts else "[media]")
 
@@ -96,60 +133,33 @@ async def run_agent(chat_id: int, user_content: str | list) -> str:
     history = db.get_history(chat_id, limit=30)
 
     messages = [{"role": "system", "content": system_prompt}]
-
-    # Add history (all but the last message, which is the current one we just saved)
     if len(history) > 1:
         messages.extend(history[:-1])
-
-    # Add current user message (may be multi-modal)
     messages.append({"role": "user", "content": user_content})
 
     # Agent loop
     for round_num in range(MAX_TOOL_ROUNDS):
         try:
-            response = await client.chat.completions.create(
-                model=model,
-                messages=messages,
-                tools=TOOL_SCHEMAS if TOOL_SCHEMAS else None,
-            )
+            response = await _call_llm(client, model, messages)
         except Exception as e:
-            logger.error(f"LLM API error (with tools): {e}")
-            # Retry without tools — Open Web UI may not support them
-            try:
-                response = await client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                )
-            except Exception as e2:
-                logger.error(f"LLM API error (without tools): {e2}")
-                return f"Sorry, I hit an error talking to the LLM: {e2}"
+            logger.error(f"LLM API error: {e}")
+            return f"Sorry, I hit an error: {e}"
 
         if response is None or not response.choices:
-            logger.warning("LLM returned None/empty response with tools, retrying without tools")
-            try:
-                response = await client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                )
-            except Exception as e:
-                logger.error(f"LLM API error (retry without tools): {e}")
-                return f"Sorry, I hit an error talking to the LLM: {e}"
-
-            if response is None or not response.choices:
-                logger.error("LLM returned None/empty even without tools")
-                return "Sorry, I couldn't get a response from the LLM."
+            return "Sorry, I couldn't get a response."
 
         choice = response.choices[0]
         assistant_message = choice.message
 
-        # If no tool calls, we're done
+        # No tool calls — we have the final answer
         if not assistant_message.tool_calls:
             reply = assistant_message.content or ""
             db.save_message(chat_id, "assistant", reply)
+            # Trigger summarization check in background
+            asyncio.create_task(_maybe_summarize(client, model, chat_id))
             return reply
 
         # Process tool calls
-        # Append the assistant message with tool calls to context
         messages.append(assistant_message)
 
         for tool_call in assistant_message.tool_calls:
@@ -161,6 +171,11 @@ async def run_agent(chat_id: int, user_content: str | list) -> str:
 
             logger.info(f"Tool call: {fn_name}({fn_args})")
 
+            # Send status update
+            if status_callback:
+                label = TOOL_STATUS_LABELS.get(fn_name, f"Using {fn_name}")
+                await status_callback(f"{label}...")
+
             result = await _execute_tool(fn_name, fn_args, chat_id)
             db.log_tool_call(chat_id, fn_name, json.dumps(fn_args), result)
 
@@ -170,15 +185,49 @@ async def run_agent(chat_id: int, user_content: str | list) -> str:
                 "content": result,
             })
 
-    # If we exhausted rounds, return whatever we have
+    # Exhausted tool rounds — get final answer without tools
     try:
         response = await client.chat.completions.create(
             model=model,
             messages=messages,
         )
-        reply = response.choices[0].message.content or "I ran out of tool rounds. Here's what I have so far."
+        reply = response.choices[0].message.content or "I ran out of steps but here's what I found."
     except Exception as e:
         reply = "I hit the tool round limit and encountered an error."
 
     db.save_message(chat_id, "assistant", reply)
     return reply
+
+
+async def _maybe_summarize(client, model, chat_id: int):
+    """Summarize older messages if conversation is getting long."""
+    try:
+        msg_count = db.get_message_count(chat_id)
+        if msg_count < 40:
+            return
+
+        # Get older messages (beyond the recent 20)
+        old_messages = db.get_history(chat_id, limit=50, offset=20)
+        if len(old_messages) < 10:
+            return
+
+        existing_summary = db.get_conversation_summary(chat_id) or ""
+        text_block = "\n".join(f"{m['role']}: {m['content']}" for m in old_messages[:20])
+
+        summary_prompt = [
+            {"role": "system", "content": "Summarize this conversation excerpt in 3-5 sentences. Preserve key facts, decisions, and context. Be concise."},
+            {"role": "user", "content": f"Previous summary:\n{existing_summary}\n\nNew messages:\n{text_block}"},
+        ]
+
+        response = await client.chat.completions.create(
+            model=model,
+            messages=summary_prompt,
+            max_tokens=300,
+        )
+        if response and response.choices:
+            summary = response.choices[0].message.content
+            db.save_conversation_summary(chat_id, summary)
+            # Clean up old messages that have been summarized
+            db.trim_old_messages(chat_id, keep_recent=30)
+    except Exception as e:
+        logger.error(f"Summarization error: {e}")

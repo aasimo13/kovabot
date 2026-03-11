@@ -2,6 +2,7 @@ import logging
 
 from telegram.ext import (
     ApplicationBuilder,
+    CallbackQueryHandler,
     CommandHandler,
     MessageHandler,
     filters,
@@ -11,12 +12,16 @@ import db
 from config import TELEGRAM_TOKEN
 from handlers.commands import (
     start_command,
+    help_command,
     reset_command,
     memory_command,
     clear_memory_command,
     reminders_command,
+    history_command,
+    stats_command,
+    handle_callback,
 )
-from handlers.messages import handle_text, handle_photo, handle_document
+from handlers.messages import handle_text, handle_photo, handle_document, handle_voice
 from scheduler import check_reminders
 
 logging.basicConfig(
@@ -24,6 +29,18 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+
+async def error_handler(update, context):
+    """Global error handler — log and notify user."""
+    logger.error(f"Unhandled exception: {context.error}", exc_info=context.error)
+    if update and update.effective_message:
+        try:
+            await update.effective_message.reply_text(
+                "Something went wrong on my end. Try again in a moment."
+            )
+        except Exception:
+            pass
 
 
 def main():
@@ -35,15 +52,25 @@ def main():
 
     # Commands
     app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("reset", reset_command))
     app.add_handler(CommandHandler("memory", memory_command))
     app.add_handler(CommandHandler("clearmemory", clear_memory_command))
     app.add_handler(CommandHandler("reminders", reminders_command))
+    app.add_handler(CommandHandler("history", history_command))
+    app.add_handler(CommandHandler("stats", stats_command))
+
+    # Inline keyboard callbacks
+    app.add_handler(CallbackQueryHandler(handle_callback))
 
     # Messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice))
+
+    # Global error handler
+    app.add_error_handler(error_handler)
 
     # Scheduled tasks — check reminders every 30 seconds
     app.job_queue.run_repeating(check_reminders, interval=30, first=5)

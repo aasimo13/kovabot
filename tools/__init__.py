@@ -3,6 +3,7 @@ from tools.web_search import brave_search
 from tools.memory import store_fact, recall_facts
 from tools.reminders import create_reminder, list_reminders, cancel_reminder
 from tools.code_exec import execute_python
+from tools.fetch_url import fetch_url
 
 # Maps function name → callable
 TOOL_REGISTRY: dict[str, callable] = {
@@ -14,6 +15,7 @@ TOOL_REGISTRY: dict[str, callable] = {
     "list_reminders": list_reminders,
     "cancel_reminder": cancel_reminder,
     "execute_python": execute_python,
+    "fetch_url": fetch_url,
 }
 
 # OpenAI-format function schemas
@@ -166,6 +168,23 @@ TOOL_SCHEMAS = [
                     }
                 },
                 "required": ["code"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "fetch_url",
+            "description": "Fetch and read the content of a URL/webpage. Use this when the user shares a link or asks you to read/summarize a webpage.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The URL to fetch.",
+                    }
+                },
+                "required": ["url"],
             },
         },
     },
