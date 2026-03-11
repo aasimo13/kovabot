@@ -108,6 +108,92 @@ def _init_schema(conn: sqlite3.Connection):
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
+
+        -- Phase 1: Webhook events
+        CREATE TABLE IF NOT EXISTS webhook_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            channel TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            processed INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_webhook_events_chat ON webhook_events(chat_id, created_at);
+
+        -- Phase 3: OAuth tokens
+        CREATE TABLE IF NOT EXISTS oauth_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            provider TEXT NOT NULL,
+            access_token TEXT NOT NULL,
+            refresh_token TEXT NOT NULL DEFAULT '',
+            expires_at TEXT NOT NULL,
+            scope TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(chat_id, provider)
+        );
+
+        -- Phase 4: Notifications
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            body TEXT NOT NULL DEFAULT '',
+            read INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_notifications_chat ON notifications(chat_id, read, created_at);
+
+        -- Phase 4: Follow-ups
+        CREATE TABLE IF NOT EXISTS follow_ups (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            message TEXT NOT NULL,
+            fire_at TEXT NOT NULL,
+            done INTEGER NOT NULL DEFAULT 0,
+            source_tool TEXT NOT NULL DEFAULT '',
+            source_args TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_follow_ups_due ON follow_ups(done, fire_at);
+
+        -- Phase 5: Memory vectors
+        CREATE TABLE IF NOT EXISTS memory_vectors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            source_type TEXT NOT NULL,
+            source_id TEXT NOT NULL DEFAULT '',
+            content TEXT NOT NULL,
+            embedding TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_memory_vectors_chat ON memory_vectors(chat_id, source_type);
+
+        -- Phase 6: Plans
+        CREATE TABLE IF NOT EXISTS plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            steps TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_plans_chat ON plans(chat_id, status);
+
+        -- Phase 6: Confirmations
+        CREATE TABLE IF NOT EXISTS confirmations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            details TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_confirmations_chat ON confirmations(chat_id, status);
     """)
 
 
@@ -513,3 +599,245 @@ def delete_custom_tool(tool_id: int) -> bool:
     cur = conn.execute("DELETE FROM custom_tools WHERE id = ?", (tool_id,))
     conn.commit()
     return cur.rowcount > 0
+
+
+# --- Webhook event helpers ---
+
+def log_webhook_event(chat_id: int, channel: str, payload: str):
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO webhook_events (chat_id, channel, payload) VALUES (?, ?, ?)",
+        (chat_id, channel, payload),
+    )
+    conn.commit()
+
+
+def get_recent_webhook_events(chat_id: int, limit: int = 20) -> list[dict]:
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, channel, payload, processed, created_at FROM webhook_events WHERE chat_id = ? ORDER BY created_at DESC LIMIT ?",
+        (chat_id, limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# --- OAuth token helpers ---
+
+def save_oauth_token(chat_id: int, provider: str, access_token: str, refresh_token: str,
+                     expires_at: str, scope: str = ""):
+    conn = get_conn()
+    conn.execute(
+        """INSERT INTO oauth_tokens (chat_id, provider, access_token, refresh_token, expires_at, scope, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+           ON CONFLICT(chat_id, provider)
+           DO UPDATE SET access_token = excluded.access_token,
+                         refresh_token = CASE WHEN excluded.refresh_token = '' THEN oauth_tokens.refresh_token ELSE excluded.refresh_token END,
+                         expires_at = excluded.expires_at,
+                         scope = excluded.scope,
+                         updated_at = excluded.updated_at""",
+        (chat_id, provider, access_token, refresh_token, expires_at, scope),
+    )
+    conn.commit()
+
+
+def get_oauth_token(chat_id: int, provider: str) -> dict | None:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT chat_id, provider, access_token, refresh_token, expires_at, scope FROM oauth_tokens WHERE chat_id = ? AND provider = ?",
+        (chat_id, provider),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def delete_oauth_token(chat_id: int, provider: str):
+    conn = get_conn()
+    conn.execute("DELETE FROM oauth_tokens WHERE chat_id = ? AND provider = ?", (chat_id, provider))
+    conn.commit()
+
+
+# --- Notification helpers ---
+
+def save_notification(chat_id: int, type: str, title: str, body: str = ""):
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO notifications (chat_id, type, title, body) VALUES (?, ?, ?, ?)",
+        (chat_id, type, title, body),
+    )
+    conn.commit()
+
+
+def get_notifications(chat_id: int, limit: int = 30, unread_only: bool = False) -> list[dict]:
+    conn = get_conn()
+    query = "SELECT id, type, title, body, read, created_at FROM notifications WHERE chat_id = ?"
+    if unread_only:
+        query += " AND read = 0"
+    query += " ORDER BY created_at DESC LIMIT ?"
+    rows = conn.execute(query, (chat_id, limit)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_recent_notifications(chat_id: int, limit: int = 5) -> list[dict]:
+    return get_notifications(chat_id, limit=limit)
+
+
+def get_unread_notification_count(chat_id: int) -> int:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT COUNT(*) as cnt FROM notifications WHERE chat_id = ? AND read = 0",
+        (chat_id,),
+    ).fetchone()
+    return row["cnt"]
+
+
+def mark_notification_read(notification_id: int):
+    conn = get_conn()
+    conn.execute("UPDATE notifications SET read = 1 WHERE id = ?", (notification_id,))
+    conn.commit()
+
+
+# --- Follow-up helpers ---
+
+def create_follow_up(chat_id: int, message: str, fire_at: str, source_tool: str = "", source_args: str = ""):
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO follow_ups (chat_id, message, fire_at, source_tool, source_args) VALUES (?, ?, ?, ?, ?)",
+        (chat_id, message, fire_at, source_tool, source_args),
+    )
+    conn.commit()
+
+
+def get_due_follow_ups() -> list[dict]:
+    conn = get_conn()
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    rows = conn.execute(
+        "SELECT id, chat_id, message, fire_at FROM follow_ups WHERE done = 0 AND fire_at <= ?",
+        (now,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def mark_follow_up_done(follow_up_id: int):
+    conn = get_conn()
+    conn.execute("UPDATE follow_ups SET done = 1 WHERE id = ?", (follow_up_id,))
+    conn.commit()
+
+
+# --- Memory vector helpers ---
+
+def save_memory_vector(chat_id: int, source_type: str, source_id: str, content: str, embedding: list[float]):
+    conn = get_conn()
+    # Remove existing vector for same source
+    conn.execute(
+        "DELETE FROM memory_vectors WHERE chat_id = ? AND source_type = ? AND source_id = ?",
+        (chat_id, source_type, source_id),
+    )
+    conn.execute(
+        "INSERT INTO memory_vectors (chat_id, source_type, source_id, content, embedding) VALUES (?, ?, ?, ?, ?)",
+        (chat_id, source_type, source_id, content, json.dumps(embedding)),
+    )
+    conn.commit()
+
+
+def get_memory_vectors(chat_id: int) -> list[dict]:
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT source_type, source_id, content, embedding FROM memory_vectors WHERE chat_id = ?",
+        (chat_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_memory_vectors_for_source(chat_id: int, source_type: str, source_id: str):
+    conn = get_conn()
+    conn.execute(
+        "DELETE FROM memory_vectors WHERE chat_id = ? AND source_type = ? AND source_id = ?",
+        (chat_id, source_type, source_id),
+    )
+    conn.commit()
+
+
+# --- Plan helpers ---
+
+def create_plan(chat_id: int, title: str, steps: list[dict]) -> int:
+    conn = get_conn()
+    cur = conn.execute(
+        "INSERT INTO plans (chat_id, title, steps) VALUES (?, ?, ?)",
+        (chat_id, title, json.dumps(steps)),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def get_plan(plan_id: int) -> dict | None:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT id, chat_id, title, steps, status, created_at, updated_at FROM plans WHERE id = ?",
+        (plan_id,),
+    ).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d["steps"] = json.loads(d["steps"])
+    return d
+
+
+def get_active_plans(chat_id: int) -> list[dict]:
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, chat_id, title, steps, status, created_at FROM plans WHERE chat_id = ? AND status = 'active' ORDER BY created_at DESC",
+        (chat_id,),
+    ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["steps"] = json.loads(d["steps"])
+        result.append(d)
+    return result
+
+
+def update_plan(plan_id: int, steps: list[dict], status: str):
+    conn = get_conn()
+    conn.execute(
+        "UPDATE plans SET steps = ?, status = ?, updated_at = datetime('now') WHERE id = ?",
+        (json.dumps(steps), status, plan_id),
+    )
+    conn.commit()
+
+
+# --- Confirmation helpers ---
+
+def create_confirmation(chat_id: int, action: str, details: str) -> int:
+    conn = get_conn()
+    cur = conn.execute(
+        "INSERT INTO confirmations (chat_id, action, details) VALUES (?, ?, ?)",
+        (chat_id, action, details),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def get_confirmation(confirmation_id: int) -> dict | None:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT id, chat_id, action, details, status, created_at FROM confirmations WHERE id = ?",
+        (confirmation_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def get_pending_confirmation(chat_id: int) -> dict | None:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT id, chat_id, action, details, status FROM confirmations WHERE chat_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
+        (chat_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def update_confirmation_status(confirmation_id: int, status: str):
+    conn = get_conn()
+    conn.execute(
+        "UPDATE confirmations SET status = ?, updated_at = datetime('now') WHERE id = ?",
+        (status, confirmation_id),
+    )
+    conn.commit()

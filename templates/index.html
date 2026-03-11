@@ -32,6 +32,10 @@
             <button class="sidebar-tab" data-panel="memory" onclick="switchTab(this)">Memory</button>
             <button class="sidebar-tab" data-panel="files" onclick="switchTab(this)">Files</button>
             <button class="sidebar-tab" data-panel="tools" onclick="switchTab(this)">Tools</button>
+            <button class="sidebar-tab" data-panel="notifications" onclick="switchTab(this)">
+                Alerts<span class="notif-badge" id="notif-badge" style="display:none"></span>
+            </button>
+            <button class="sidebar-tab" data-panel="integrations" onclick="switchTab(this)">Integ.</button>
         </div>
 
         <div class="sidebar-content">
@@ -93,11 +97,30 @@
                 <div id="command-form-container"></div>
                 <div id="commands-list"></div>
             </div>
+
+            <!-- Notifications panel (Phase 4) -->
+            <div class="sidebar-panel" id="panel-notifications">
+                <div class="section-header">
+                    <h3>Notifications</h3>
+                </div>
+                <div id="notifications-list"></div>
+            </div>
+
+            <!-- Integrations panel (Phase 3) -->
+            <div class="sidebar-panel" id="panel-integrations">
+                <div class="section-header">
+                    <h3>Integrations</h3>
+                </div>
+                <div id="integrations-list"></div>
+            </div>
         </div>
     </aside>
 
     <!-- Main chat area -->
     <main class="main">
+        <!-- Active plan display (Phase 6) -->
+        <div class="plan-display" id="plan-display" style="display:none"></div>
+
         <div class="chat-container" id="chat-container"></div>
 
         <div class="typing-indicator" id="typing-indicator">
@@ -131,7 +154,7 @@
 
     // --- Chat ---
 
-    function addMessage(role, content, files) {
+    function addMessage(role, content, files, audioUrl) {
         const div = document.createElement('div');
         div.className = `message ${role}`;
 
@@ -147,10 +170,22 @@
                 const link = document.createElement('a');
                 link.href = `/api/files/${f.id}`;
                 link.className = 'file-link';
-                link.textContent = `📎 ${f.filename}`;
+                link.textContent = `\u{1F4CE} ${f.filename}`;
                 link.download = f.filename;
                 div.appendChild(link);
             });
+        }
+
+        // Add audio player for TTS responses
+        if (audioUrl) {
+            const audioContainer = document.createElement('div');
+            audioContainer.className = 'tts-audio';
+            const audio = document.createElement('audio');
+            audio.controls = true;
+            audio.src = audioUrl;
+            audio.preload = 'metadata';
+            audioContainer.appendChild(audio);
+            div.appendChild(audioContainer);
         }
 
         chatContainer.appendChild(div);
@@ -190,7 +225,7 @@
             }
 
             const data = await res.json();
-            addMessage('assistant', data.reply, data.files);
+            addMessage('assistant', data.reply, data.files, data.audio_url);
             refreshSidebar();
         } catch (e) {
             addMessage('assistant', `Error: ${e.message}`);
@@ -222,7 +257,7 @@
     }
 
     async function uploadFile(file) {
-        addMessage('user', `📎 ${file.name}`);
+        addMessage('user', `\u{1F4CE} ${file.name}`);
         setLoading(true);
 
         try {
@@ -296,6 +331,9 @@
         loadTools();
         loadCustomTools();
         loadCommands();
+        loadNotifications();
+        loadIntegrations();
+        loadPlans();
     }
 
     async function loadStats() {
@@ -441,7 +479,6 @@
         const name = textarea.dataset.tool;
         const defaultDesc = textarea.dataset.default;
         const value = textarea.value.trim();
-        // Only save if different from default
         const override = (value && value !== defaultDesc) ? value : '';
         try {
             await fetch(`/api/tools/${name}`, {
@@ -591,7 +628,6 @@
         const params = getFormParams();
         if (!code) { alert('Enter code to test.'); return; }
 
-        // Build sample params
         const sampleParams = {};
         params.forEach(p => {
             if (p.type === 'integer') sampleParams[p.name] = 0;
@@ -694,7 +730,7 @@
         container.innerHTML = `<div class="custom-tool-form">
             <label>Paste tool JSON (single object or array)</label>
             <textarea class="code-area" id="import-json" rows="6" placeholder='{"name": "word_count", "description": "Count words", "parameters": [{"name": "text", "type": "string", "description": "Input text", "required": true}], "code_body": "print(len(text.split()))"}'></textarea>
-            <div class="import-divider">— or —</div>
+            <div class="import-divider">&mdash; or &mdash;</div>
             <label>Fetch from URL</label>
             <input type="text" id="import-url" placeholder="https://example.com/tools.json">
             <div id="import-result"></div>
@@ -859,12 +895,156 @@
         }
     }
 
+    // --- Notifications (Phase 4) ---
+
+    async function loadNotifications() {
+        try {
+            const res = await fetch('/api/notifications');
+            const data = await res.json();
+            const list = document.getElementById('notifications-list');
+            const badge = document.getElementById('notif-badge');
+
+            // Update badge
+            if (data.unread_count > 0) {
+                badge.textContent = data.unread_count;
+                badge.style.display = 'inline-block';
+            } else {
+                badge.style.display = 'none';
+            }
+
+            if (!data.notifications || data.notifications.length === 0) {
+                list.innerHTML = '<p style="color:var(--text-dim);font-size:0.85rem;">No notifications yet.</p>';
+                return;
+            }
+            list.innerHTML = data.notifications.map(n => {
+                const unreadClass = n.read ? '' : ' unread';
+                const typeIcon = {
+                    'briefing': '\u2600\uFE0F',
+                    'reminder': '\u23F0',
+                    'follow_up': '\u{1F4AC}',
+                }[n.type] || '\u{1F514}';
+                return `<div class="notif-card${unreadClass}" onclick="markNotifRead(${n.id}, this)">
+                    <div class="notif-header">
+                        <span class="notif-type">${typeIcon} ${escHtml(n.type)}</span>
+                        <span class="notif-time">${n.created_at ? n.created_at.slice(0, 16) : ''}</span>
+                    </div>
+                    <div class="notif-title">${escHtml(n.title)}</div>
+                    ${n.body ? '<div class="notif-body">' + escHtml(n.body).slice(0, 200) + '</div>' : ''}
+                </div>`;
+            }).join('');
+        } catch (e) {
+            console.error('Failed to load notifications:', e);
+        }
+    }
+
+    async function markNotifRead(id, el) {
+        try {
+            await fetch(`/api/notifications/${id}/read`, { method: 'POST' });
+            el.classList.remove('unread');
+            loadNotifications();
+        } catch (e) {
+            console.error('Failed to mark notification read:', e);
+        }
+    }
+
+    // --- Integrations (Phase 3) ---
+
+    async function loadIntegrations() {
+        try {
+            const res = await fetch('/api/integrations');
+            const data = await res.json();
+            const list = document.getElementById('integrations-list');
+            const integrations = data.integrations || {};
+
+            let html = '';
+
+            // Google
+            const g = integrations.google || {};
+            html += `<div class="integration-card">
+                <div class="integration-header">
+                    <span class="integration-name">Google (Calendar + Gmail)</span>
+                    <span class="status-badge ${g.connected ? 'connected' : g.configured ? 'configured' : 'off'}">${g.connected ? 'Connected' : g.configured ? 'Not Connected' : 'Not Configured'}</span>
+                </div>
+                ${g.configured && !g.connected ? '<a href="/api/oauth/google" class="btn-sm" style="display:inline-block;margin-top:6px;">Connect Google</a>' : ''}
+                ${g.connected ? '<button class="btn-sm danger" style="margin-top:6px;" onclick="disconnectGoogle()">Disconnect</button>' : ''}
+            </div>`;
+
+            // GitHub
+            const gh = integrations.github || {};
+            html += `<div class="integration-card">
+                <div class="integration-header">
+                    <span class="integration-name">GitHub</span>
+                    <span class="status-badge ${gh.connected ? 'connected' : 'off'}">${gh.connected ? 'Connected' : 'Not Configured'}</span>
+                </div>
+                ${!gh.configured ? '<div class="integration-hint">Set GITHUB_TOKEN env var to enable</div>' : ''}
+            </div>`;
+
+            // Home Assistant
+            const ha = integrations.homeassistant || {};
+            html += `<div class="integration-card">
+                <div class="integration-header">
+                    <span class="integration-name">Home Assistant</span>
+                    <span class="status-badge ${ha.connected ? 'connected' : 'off'}">${ha.connected ? 'Connected' : 'Not Configured'}</span>
+                </div>
+                ${!ha.configured ? '<div class="integration-hint">Set HA_URL + HA_TOKEN env vars to enable</div>' : ''}
+            </div>`;
+
+            list.innerHTML = html;
+        } catch (e) {
+            console.error('Failed to load integrations:', e);
+        }
+    }
+
+    async function disconnectGoogle() {
+        if (!confirm('Disconnect Google account?')) return;
+        try {
+            await fetch('/api/oauth/google', { method: 'DELETE' });
+            loadIntegrations();
+        } catch (e) {
+            console.error('Failed to disconnect Google:', e);
+        }
+    }
+
+    // --- Plans (Phase 6) ---
+
+    async function loadPlans() {
+        try {
+            const res = await fetch('/api/plans');
+            const data = await res.json();
+            const display = document.getElementById('plan-display');
+
+            if (!data.plans || data.plans.length === 0) {
+                display.style.display = 'none';
+                return;
+            }
+
+            display.style.display = 'block';
+            display.innerHTML = data.plans.map(p => {
+                const completed = p.steps.filter(s => s.status === 'completed').length;
+                const total = p.steps.length;
+                const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+                const stepsHtml = p.steps.map(s => {
+                    const icon = {'pending':'\u25CB','in_progress':'\u25D4','completed':'\u25CF','failed':'\u2716'}[s.status] || '\u25CB';
+                    return `<div class="plan-step ${s.status}"><span class="plan-step-icon">${icon}</span> ${escHtml(s.description)}</div>`;
+                }).join('');
+                return `<div class="plan-card">
+                    <div class="plan-title">${escHtml(p.title)}</div>
+                    <div class="plan-progress"><div class="plan-progress-bar" style="width:${pct}%"></div></div>
+                    <div class="plan-progress-text">${completed}/${total} steps</div>
+                    <div class="plan-steps">${stepsHtml}</div>
+                </div>`;
+            }).join('');
+        } catch (e) {
+            console.error('Failed to load plans:', e);
+        }
+    }
+
     // Init
     loadHistory();
     refreshSidebar();
 
-    // Auto-refresh sidebar every 30s
-    setInterval(refreshSidebar, 30000);
+    // Auto-refresh sidebar every 15s
+    setInterval(refreshSidebar, 15000);
 </script>
 
 </body>

@@ -32,6 +32,36 @@ TOOL_STATUS_LABELS = {
     "get_current_datetime": "Checking the time",
     "fetch_url": "Reading webpage",
     "generate_file": "Creating file",
+    # Phase 1
+    "text_to_speech": "Generating voice",
+    # Phase 2
+    "github_list_repos": "Listing repos",
+    "github_search_issues": "Searching issues",
+    "github_create_issue": "Creating issue",
+    "github_get_pull_request": "Getting PR details",
+    "github_list_notifications": "Checking notifications",
+    "ha_list_entities": "Listing devices",
+    "ha_get_state": "Checking device state",
+    "ha_call_service": "Controlling device",
+    "ha_get_history": "Getting device history",
+    # Phase 3
+    "gcal_list_events": "Checking calendar",
+    "gcal_create_event": "Creating event",
+    "gcal_free_busy": "Checking availability",
+    "gcal_search_events": "Searching calendar",
+    "gmail_search": "Searching email",
+    "gmail_read": "Reading email",
+    "gmail_send": "Sending email",
+    "gmail_create_draft": "Creating draft",
+    # Phase 5
+    "semantic_recall": "Searching memory",
+    # Phase 6
+    "create_plan": "Creating plan",
+    "update_plan_step": "Updating plan",
+    "get_plan": "Checking plan",
+    "request_confirmation": "Requesting confirmation",
+    "check_confirmation": "Checking confirmation",
+    "get_agent_context": "Inspecting context",
 }
 
 
@@ -194,8 +224,12 @@ async def run_agent(chat_id: int, user_content: str | list, status_callback=None
         messages.extend(history[:-1])
     messages.append({"role": "user", "content": user_content})
 
+    # Increase tool rounds if a plan is active
+    active_plans = db.get_active_plans(chat_id)
+    max_rounds = MAX_TOOL_ROUNDS + 5 if active_plans else MAX_TOOL_ROUNDS
+
     # Agent loop
-    for round_num in range(MAX_TOOL_ROUNDS):
+    for round_num in range(max_rounds):
         try:
             response = await _call_llm(client, model, messages)
         except Exception as e:
@@ -286,5 +320,13 @@ async def _maybe_summarize(client, model, chat_id: int):
             db.save_conversation_summary(chat_id, summary)
             # Clean up old messages that have been summarized
             db.trim_old_messages(chat_id, keep_recent=30)
+
+            # Embed the summary for semantic search (Phase 5)
+            try:
+                from embeddings import get_embedding
+                embedding = await get_embedding(summary)
+                db.save_memory_vector(chat_id, "summary", f"summary_{chat_id}", summary, embedding)
+            except Exception as e:
+                logger.debug(f"Summary embedding skipped: {e}")
     except Exception as e:
         logger.error(f"Summarization error: {e}")

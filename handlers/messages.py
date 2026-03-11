@@ -10,7 +10,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
-from config import is_allowed
+from config import is_allowed, TTS_ENABLED
 from agent import run_agent
 from formatting import markdown_to_telegram_html, smart_split
 import db
@@ -58,6 +58,41 @@ async def _send_reply(update: Update, text: str, status_message=None):
             break
 
 
+async def _send_tts_audio(update: Update, reply: str):
+    """Detect TTS_AUDIO_FILE sentinel in reply and send voice note."""
+    tts_match = re.search(r'TTS_AUDIO_FILE:([^:]+):(\d+)', reply)
+    if tts_match:
+        filepath = tts_match.group(1)
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, "rb") as f:
+                    await update.message.reply_voice(voice=f)
+            except Exception as e:
+                logger.error(f"Error sending TTS audio: {e}")
+        return True
+    return False
+
+
+def _check_pending_confirmation(chat_id: int, user_message: str) -> str | None:
+    """Check if user is responding to a pending confirmation."""
+    pending = db.get_pending_confirmation(chat_id)
+    if not pending:
+        return None
+
+    lower = user_message.lower().strip()
+    affirmative = {"yes", "y", "confirm", "approve", "ok", "go ahead", "do it", "sure", "yep", "yeah"}
+    negative = {"no", "n", "cancel", "deny", "stop", "don't", "nope", "nah", "abort"}
+
+    if lower in affirmative:
+        db.update_confirmation_status(pending["id"], "approved")
+        return f"Confirmation #{pending['id']} approved. Proceeding with: {pending['action']} — {pending['details']}"
+    elif lower in negative:
+        db.update_confirmation_status(pending["id"], "denied")
+        return f"Confirmation #{pending['id']} denied. Cancelled: {pending['action']}"
+
+    return None
+
+
 async def handle_custom_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle custom commands defined in the database (catch-all for unknown /commands)."""
     if not is_allowed(update.effective_user.id):
@@ -94,7 +129,19 @@ async def handle_custom_command(update: Update, context: ContextTypes.DEFAULT_TY
 
     try:
         reply = await run_agent(chat_id, message, status_callback=status_callback)
-        await _send_reply(update, reply, status_message)
+        # Check for TTS audio in response
+        had_tts = await _send_tts_audio(update, reply)
+        # Strip TTS sentinel from text reply
+        clean_reply = re.sub(r'TTS_AUDIO_FILE:[^\s]+', '', reply).strip()
+        if clean_reply:
+            await _send_reply(update, clean_reply, status_message)
+        elif status_message and not had_tts:
+            await _send_reply(update, reply, status_message)
+        elif status_message:
+            try:
+                await status_message.delete()
+            except Exception:
+                pass
         await _send_generated_files(chat_id, reply, update)
     except Exception as e:
         logger.error(f"Error in handle_custom_command: {e}", exc_info=True)
@@ -110,6 +157,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
     user_message = update.message.text
+
+    # Check for pending confirmation response
+    confirmation_result = _check_pending_confirmation(chat_id, user_message)
+    if confirmation_result:
+        # Re-inject confirmation context and continue the agent
+        user_message = confirmation_result
 
     typing_task = asyncio.create_task(_keep_typing(context.bot, chat_id))
     status_message = None
@@ -128,7 +181,19 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         reply = await run_agent(chat_id, user_message, status_callback=status_callback)
-        await _send_reply(update, reply, status_message)
+        # Check for TTS audio in response
+        had_tts = await _send_tts_audio(update, reply)
+        # Strip TTS sentinel from text reply
+        clean_reply = re.sub(r'TTS_AUDIO_FILE:[^\s]+', '', reply).strip()
+        if clean_reply:
+            await _send_reply(update, clean_reply, status_message)
+        elif status_message and not had_tts:
+            await _send_reply(update, reply, status_message)
+        elif status_message:
+            try:
+                await status_message.delete()
+            except Exception:
+                pass
         await _send_generated_files(chat_id, reply, update)
     except Exception as e:
         logger.error(f"Error in handle_text: {e}", exc_info=True)
@@ -353,6 +418,10 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Couldn't transcribe that audio.")
             return
 
+        # If TTS is enabled, hint the agent to respond with voice
+        if TTS_ENABLED:
+            transcript = f"{transcript}\n\n[User sent a voice message. Consider using text_to_speech to respond with a voice note.]"
+
         status_message = None
 
         async def status_callback(status_text: str):
@@ -368,7 +437,19 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
 
         reply = await run_agent(chat_id, transcript, status_callback=status_callback)
-        await _send_reply(update, reply, status_message)
+        # Check for TTS audio in response
+        had_tts = await _send_tts_audio(update, reply)
+        # Strip TTS sentinel from text reply
+        clean_reply = re.sub(r'TTS_AUDIO_FILE:[^\s]+', '', reply).strip()
+        if clean_reply:
+            await _send_reply(update, clean_reply, status_message)
+        elif status_message and not had_tts:
+            await _send_reply(update, reply, status_message)
+        elif status_message:
+            try:
+                await status_message.delete()
+            except Exception:
+                pass
     except Exception as e:
         logger.error(f"Error in handle_voice: {e}", exc_info=True)
         await update.message.reply_text("Something went wrong processing that voice message.")

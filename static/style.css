@@ -1032,3 +1032,200 @@ body {
     display: flex;
     gap: 6px;
 }
+
+/* TTS Audio player (Phase 1) */
+.tts-audio {
+    margin-top: 8px;
+}
+
+.tts-audio audio {
+    width: 100%;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    outline: none;
+}
+
+/* Notification badge (Phase 4) */
+.notif-badge {
+    background: var(--danger);
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 10px;
+    margin-left: 4px;
+    vertical-align: top;
+}
+
+/* Notification cards (Phase 4) */
+.notif-card {
+    background: var(--surface-2);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+    border-left: 3px solid transparent;
+}
+
+.notif-card.unread {
+    border-left-color: var(--accent);
+    background: rgba(108, 140, 255, 0.08);
+}
+
+.notif-card:hover {
+    background: var(--border);
+}
+
+.notif-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.notif-type {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.notif-time {
+    font-size: 0.68rem;
+    color: var(--text-dim);
+}
+
+.notif-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.notif-body {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    margin-top: 4px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Integration cards (Phase 3) */
+.integration-card {
+    background: var(--surface-2);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    margin-bottom: 10px;
+}
+
+.integration-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.integration-name {
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.integration-hint {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    margin-top: 4px;
+}
+
+.status-badge {
+    font-size: 0.68rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+.status-badge.connected {
+    background: rgba(76, 175, 80, 0.2);
+    color: var(--success);
+}
+
+.status-badge.configured {
+    background: rgba(255, 193, 7, 0.2);
+    color: #ffc107;
+}
+
+.status-badge.off {
+    background: var(--border);
+    color: var(--text-dim);
+}
+
+/* Plan display (Phase 6) */
+.plan-display {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+}
+
+.plan-card {
+    background: var(--surface-2);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    margin-bottom: 8px;
+}
+
+.plan-title {
+    font-weight: 700;
+    font-size: 0.9rem;
+    margin-bottom: 8px;
+}
+
+.plan-progress {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+
+.plan-progress-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.3s;
+}
+
+.plan-progress-text {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+}
+
+.plan-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.plan-step {
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.plan-step-icon {
+    flex-shrink: 0;
+}
+
+.plan-step.completed {
+    color: var(--success);
+}
+
+.plan-step.failed {
+    color: var(--danger);
+}
+
+.plan-step.in_progress {
+    color: var(--accent);
+}
+
+.plan-step.pending {
+    color: var(--text-dim);
+}

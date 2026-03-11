@@ -12,11 +12,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 import db
-from config import WEB_AUTH_TOKEN, WEB_CHAT_ID
+from config import WEB_AUTH_TOKEN, WEB_CHAT_ID, WEBHOOK_SECRET, GOOGLE_CLIENT_ID, GITHUB_TOKEN, HA_URL, HA_TOKEN
 from agent import run_agent
 from tools import TOOL_SCHEMAS, TOOL_REGISTRY
 from tools.code_exec import execute_custom_tool
 from RestrictedPython import compile_restricted
+from webhooks import get_channel_handler, verify_signature
 
 logger = logging.getLogger(__name__)
 
@@ -78,10 +79,15 @@ def create_web_app() -> FastAPI:
         if not chat_id:
             raise HTTPException(status_code=500, detail="WEB_CHAT_ID not configured")
 
+        # Check for pending confirmation response
+        from handlers.messages import _check_pending_confirmation
+        confirmation_result = _check_pending_confirmation(chat_id, message)
+        if confirmation_result:
+            message = confirmation_result
+
         try:
             reply = await run_agent(chat_id, message)
             # Check for generated files
-            import re
             file_ids = re.findall(r'\(id=(\d+)\)', reply)
             files = []
             for fid in file_ids:
@@ -91,7 +97,17 @@ def create_web_app() -> FastAPI:
                         "id": file_record["id"],
                         "filename": file_record["filename"],
                     })
-            return JSONResponse({"reply": reply, "files": files})
+
+            # Check for TTS audio
+            audio_url = None
+            tts_match = re.search(r'TTS_AUDIO_FILE:[^:]+:(\d+)', reply)
+            if tts_match:
+                audio_file_id = int(tts_match.group(1))
+                audio_url = f"/api/files/{audio_file_id}"
+                # Strip sentinel from reply
+                reply = re.sub(r'TTS_AUDIO_FILE:[^\s]+', '', reply).strip()
+
+            return JSONResponse({"reply": reply, "files": files, "audio_url": audio_url})
         except Exception as e:
             logger.error(f"Web chat error: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Agent error")
@@ -524,5 +540,148 @@ def create_web_app() -> FastAPI:
             raise HTTPException(status_code=400, detail="; ".join(errors))
 
         return JSONResponse({"ok": True, "imported": imported, "errors": errors})
+
+    # --- Webhook endpoint (Phase 1) ---
+
+    @app.post("/api/webhook/{channel}")
+    async def api_webhook(channel: str, request: Request):
+        raw_body = await request.body()
+
+        # Signature verification
+        if WEBHOOK_SECRET:
+            signature = request.headers.get("X-Signature-256", request.headers.get("X-Hub-Signature-256", ""))
+            if not verify_signature(raw_body, signature, WEBHOOK_SECRET):
+                raise HTTPException(status_code=401, detail="Invalid signature")
+
+        try:
+            payload = json.loads(raw_body)
+        except (json.JSONDecodeError, TypeError):
+            payload = {"raw": raw_body.decode("utf-8", errors="replace")[:1000]}
+
+        chat_id = WEB_CHAT_ID or 0
+
+        # Log the event
+        db.log_webhook_event(chat_id, channel, json.dumps(payload)[:5000])
+
+        # Route to channel handler
+        handler = get_channel_handler(channel)
+        if handler:
+            try:
+                result = await handler(chat_id, payload)
+                # Save as notification
+                db.save_notification(chat_id, f"webhook:{channel}", f"Webhook: {channel}", result or "")
+            except Exception as e:
+                logger.error(f"Webhook handler error ({channel}): {e}")
+
+        return JSONResponse({"ok": True, "channel": channel})
+
+    # --- OAuth endpoints (Phase 3) ---
+
+    @app.get("/api/oauth/google")
+    async def api_oauth_google(request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        if not GOOGLE_CLIENT_ID:
+            raise HTTPException(status_code=400, detail="Google OAuth not configured")
+
+        from google_auth import get_auth_url
+        url = get_auth_url(state=str(WEB_CHAT_ID))
+        return RedirectResponse(url=url)
+
+    @app.get("/api/oauth/google/callback")
+    async def api_oauth_google_callback(request: Request):
+        code = request.query_params.get("code")
+        state = request.query_params.get("state")
+        if not code:
+            raise HTTPException(status_code=400, detail="Missing authorization code")
+
+        chat_id = int(state) if state else WEB_CHAT_ID
+        if not chat_id:
+            raise HTTPException(status_code=400, detail="Invalid state")
+
+        from google_auth import exchange_code
+        success = await exchange_code(code, chat_id)
+        if success:
+            return RedirectResponse(url="/?google=connected")
+        raise HTTPException(status_code=500, detail="Failed to complete OAuth flow")
+
+    @app.delete("/api/oauth/google")
+    async def api_oauth_google_disconnect(request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        chat_id = WEB_CHAT_ID
+        if chat_id:
+            db.delete_oauth_token(chat_id, "google")
+        return JSONResponse({"ok": True})
+
+    # --- Integrations status (Phase 3) ---
+
+    @app.get("/api/integrations")
+    async def api_integrations(request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        chat_id = WEB_CHAT_ID
+        integrations = {}
+
+        # Google
+        if GOOGLE_CLIENT_ID:
+            token = db.get_oauth_token(chat_id, "google") if chat_id else None
+            integrations["google"] = {
+                "configured": True,
+                "connected": token is not None,
+            }
+        else:
+            integrations["google"] = {"configured": False, "connected": False}
+
+        # GitHub
+        integrations["github"] = {
+            "configured": bool(GITHUB_TOKEN),
+            "connected": bool(GITHUB_TOKEN),
+        }
+
+        # Home Assistant
+        integrations["homeassistant"] = {
+            "configured": bool(HA_URL and HA_TOKEN),
+            "connected": bool(HA_URL and HA_TOKEN),
+        }
+
+        return JSONResponse({"integrations": integrations})
+
+    # --- Notifications (Phase 4) ---
+
+    @app.get("/api/notifications")
+    async def api_notifications(request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        chat_id = WEB_CHAT_ID
+        if not chat_id:
+            return JSONResponse({"notifications": [], "unread_count": 0})
+
+        notifications = db.get_notifications(chat_id, limit=30)
+        unread_count = db.get_unread_notification_count(chat_id)
+        return JSONResponse({"notifications": notifications, "unread_count": unread_count})
+
+    @app.post("/api/notifications/{notification_id}/read")
+    async def api_mark_notification_read(notification_id: int, request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        db.mark_notification_read(notification_id)
+        return JSONResponse({"ok": True})
+
+    # --- Plans (Phase 6) ---
+
+    @app.get("/api/plans")
+    async def api_plans(request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        chat_id = WEB_CHAT_ID
+        if not chat_id:
+            return JSONResponse({"plans": []})
+
+        plans = db.get_active_plans(chat_id)
+        return JSONResponse({"plans": plans})
 
     return app

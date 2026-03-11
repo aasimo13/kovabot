@@ -33,6 +33,12 @@ async def check_reminders(context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Error sending reminder #{rid}: {e}")
             continue
 
+        # Save as notification (Phase 4)
+        try:
+            db.save_notification(chat_id, "reminder", f"Reminder: {desc}", desc)
+        except Exception:
+            pass
+
         if recurrence:
             # Schedule next occurrence
             try:

@@ -26,7 +26,13 @@ from handlers.commands import (
 )
 from handlers.messages import handle_text, handle_photo, handle_document, handle_voice, handle_custom_command
 from scheduler import check_reminders
+from proactive import generate_morning_briefing, check_follow_ups
 from web import create_web_app
+
+# Import webhook channel modules so their decorators register
+import webhooks  # noqa: F401
+import webhooks_github  # noqa: F401
+import webhooks_homeassistant  # noqa: F401
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -76,8 +82,10 @@ def build_telegram_app():
     # Global error handler
     app.add_error_handler(error_handler)
 
-    # Scheduled tasks — check reminders every 30 seconds
+    # Scheduled tasks
     app.job_queue.run_repeating(check_reminders, interval=30, first=5)
+    app.job_queue.run_repeating(generate_morning_briefing, interval=60, first=30)
+    app.job_queue.run_repeating(check_follow_ups, interval=300, first=60)
 
     return app
 

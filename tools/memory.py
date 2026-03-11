@@ -1,8 +1,23 @@
+import asyncio
+import logging
+
 import db
 
+logger = logging.getLogger(__name__)
 
-def store_fact(category: str, key: str, value: str, chat_id: int = 0) -> str:
+
+async def store_fact(category: str, key: str, value: str, chat_id: int = 0) -> str:
     db.upsert_fact(chat_id, category, key, value)
+
+    # Embed the fact for semantic search (Phase 5)
+    try:
+        from embeddings import get_embedding
+        content = f"[{category}] {key}: {value}"
+        embedding = await get_embedding(content)
+        db.save_memory_vector(chat_id, "fact", f"{category}:{key}", content, embedding)
+    except Exception as e:
+        logger.debug(f"Fact embedding skipped: {e}")
+
     return f"Stored: [{category}] {key} = {value}"
 
 
