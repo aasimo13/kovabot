@@ -74,6 +74,20 @@ def _get_client() -> AsyncOpenAI:
     return AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 
+def _get_tool_client() -> tuple[AsyncOpenAI, str]:
+    """Get a client suitable for tool-calling requests.
+    Open WebUI often doesn't support the tools parameter properly,
+    so use OpenAI directly when available."""
+    if OPENAI_API_KEY:
+        return AsyncOpenAI(api_key=OPENAI_API_KEY), "openai"
+    if OPENWEBUI_URL and OPENWEBUI_API_KEY:
+        return AsyncOpenAI(
+            base_url=f"{OPENWEBUI_URL}/api",
+            api_key=OPENWEBUI_API_KEY,
+        ), "openwebui"
+    return AsyncOpenAI(api_key=OPENAI_API_KEY), "openai"
+
+
 async def _get_model(client: AsyncOpenAI) -> str:
     if MODEL_ID:
         return MODEL_ID
@@ -175,22 +189,28 @@ def _get_effective_tool_schemas() -> list[dict]:
 
 
 async def _call_llm(client, model, messages, use_tools=True):
-    """Call the LLM with fallback: try with tools, then without."""
+    """Call the LLM with fallback: try with tools, then without.
+    Uses OpenAI directly for tool calls when available (Open WebUI often
+    doesn't support the tools parameter)."""
     effective_schemas = _get_effective_tool_schemas() if use_tools else []
     if use_tools and effective_schemas:
+        tool_client, tool_backend = _get_tool_client()
+        # Use a known tool-capable model when going direct to OpenAI
+        tool_model = model if tool_backend != "openai" else (model if model.startswith("gpt") else "gpt-4o")
         try:
-            response = await client.chat.completions.create(
-                model=model,
+            logger.info(f"Tool call via {tool_backend}, model={tool_model}, {len(effective_schemas)} tools")
+            response = await tool_client.chat.completions.create(
+                model=tool_model,
                 messages=messages,
                 tools=effective_schemas,
             )
             if response is not None and response.choices:
                 return response
-            logger.warning("LLM returned empty with tools, retrying without")
+            logger.warning(f"LLM returned empty with tools via {tool_backend} (model={tool_model})")
         except Exception as e:
-            logger.error(f"LLM API error (with tools): {e}")
+            logger.error(f"LLM API error (with tools via {tool_backend}): {e}")
 
-    # Fallback without tools
+    # Fallback without tools (uses primary client/model)
     response = await client.chat.completions.create(
         model=model,
         messages=messages,
