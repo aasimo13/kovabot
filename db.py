@@ -97,6 +97,17 @@ def _init_schema(conn: sqlite3.Connection):
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS custom_tools (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT NOT NULL,
+            parameters TEXT NOT NULL DEFAULT '[]',
+            code_body TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
     """)
 
 
@@ -431,5 +442,74 @@ def update_custom_command(command_id: int, name: str | None = None, description:
 def delete_custom_command(command_id: int) -> bool:
     conn = get_conn()
     cur = conn.execute("DELETE FROM custom_commands WHERE id = ?", (command_id,))
+    conn.commit()
+    return cur.rowcount > 0
+
+
+# --- Custom tool helpers ---
+
+def get_custom_tools(enabled_only: bool = True) -> list[dict]:
+    conn = get_conn()
+    if enabled_only:
+        rows = conn.execute("SELECT id, name, description, parameters, code_body, enabled FROM custom_tools WHERE enabled = 1 ORDER BY name").fetchall()
+    else:
+        rows = conn.execute("SELECT id, name, description, parameters, code_body, enabled, created_at, updated_at FROM custom_tools ORDER BY name").fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["parameters"] = json.loads(d["parameters"])
+        result.append(d)
+    return result
+
+
+def get_custom_tool(tool_id: int) -> dict | None:
+    conn = get_conn()
+    row = conn.execute("SELECT id, name, description, parameters, code_body, enabled FROM custom_tools WHERE id = ?", (tool_id,)).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d["parameters"] = json.loads(d["parameters"])
+    return d
+
+
+def get_custom_tool_by_name(name: str) -> dict | None:
+    conn = get_conn()
+    row = conn.execute("SELECT id, name, description, parameters, code_body, enabled FROM custom_tools WHERE name = ?", (name,)).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d["parameters"] = json.loads(d["parameters"])
+    return d
+
+
+def create_custom_tool(name: str, description: str, parameters: list, code_body: str) -> int:
+    conn = get_conn()
+    cur = conn.execute(
+        "INSERT INTO custom_tools (name, description, parameters, code_body) VALUES (?, ?, ?, ?)",
+        (name, description, json.dumps(parameters), code_body),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def update_custom_tool(tool_id: int, name: str | None = None, description: str | None = None,
+                       parameters: list | None = None, code_body: str | None = None, enabled: bool | None = None):
+    conn = get_conn()
+    if name is not None:
+        conn.execute("UPDATE custom_tools SET name = ?, updated_at = datetime('now') WHERE id = ?", (name, tool_id))
+    if description is not None:
+        conn.execute("UPDATE custom_tools SET description = ?, updated_at = datetime('now') WHERE id = ?", (description, tool_id))
+    if parameters is not None:
+        conn.execute("UPDATE custom_tools SET parameters = ?, updated_at = datetime('now') WHERE id = ?", (json.dumps(parameters), tool_id))
+    if code_body is not None:
+        conn.execute("UPDATE custom_tools SET code_body = ?, updated_at = datetime('now') WHERE id = ?", (code_body, tool_id))
+    if enabled is not None:
+        conn.execute("UPDATE custom_tools SET enabled = ?, updated_at = datetime('now') WHERE id = ?", (int(enabled), tool_id))
+    conn.commit()
+
+
+def delete_custom_tool(tool_id: int) -> bool:
+    conn = get_conn()
+    cur = conn.execute("DELETE FROM custom_tools WHERE id = ?", (tool_id,))
     conn.commit()
     return cur.rowcount > 0

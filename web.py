@@ -12,7 +12,9 @@ from fastapi.templating import Jinja2Templates
 import db
 from config import WEB_AUTH_TOKEN, WEB_CHAT_ID
 from agent import run_agent
-from tools import TOOL_SCHEMAS
+from tools import TOOL_SCHEMAS, TOOL_REGISTRY
+from tools.code_exec import execute_custom_tool
+from RestrictedPython import compile_restricted
 
 logger = logging.getLogger(__name__)
 
@@ -352,5 +354,101 @@ def create_web_app() -> FastAPI:
         if not db.delete_custom_command(command_id):
             raise HTTPException(status_code=404, detail="Command not found")
         return JSONResponse({"ok": True})
+
+    # --- Custom tool endpoints ---
+
+    RESERVED_TOOL_NAMES = set(TOOL_REGISTRY.keys())
+
+    def _validate_tool_name(name: str, exclude_id: int | None = None):
+        if not re.match(r'^[a-z0-9_]{1,32}$', name):
+            raise HTTPException(status_code=400, detail="Name must be 1-32 chars: lowercase letters, numbers, underscores")
+        if name in RESERVED_TOOL_NAMES:
+            raise HTTPException(status_code=400, detail=f"'{name}' conflicts with a built-in tool name")
+        existing = db.get_custom_tool_by_name(name)
+        if existing and existing["id"] != exclude_id:
+            raise HTTPException(status_code=400, detail=f"Tool '{name}' already exists")
+
+    def _validate_tool_code(code: str):
+        try:
+            compile_restricted(code, filename="<sandbox>", mode="exec")
+        except SyntaxError as e:
+            raise HTTPException(status_code=400, detail=f"Code syntax error: {e}")
+
+    @app.get("/api/custom-tools")
+    async def api_custom_tools(request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        tools = db.get_custom_tools(enabled_only=False)
+        return JSONResponse({"tools": tools})
+
+    @app.post("/api/custom-tools")
+    async def api_create_custom_tool(request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        body = await request.json()
+        name = body.get("name", "").strip().lower()
+        description = body.get("description", "").strip()
+        parameters = body.get("parameters", [])
+        code_body = body.get("code_body", "").strip()
+
+        if not name or not description or not code_body:
+            raise HTTPException(status_code=400, detail="Name, description, and code_body are required")
+
+        _validate_tool_name(name)
+        _validate_tool_code(code_body)
+
+        tool_id = db.create_custom_tool(name, description, parameters, code_body)
+        return JSONResponse({"id": tool_id, "ok": True})
+
+    @app.put("/api/custom-tools/{tool_id}")
+    async def api_update_custom_tool(tool_id: int, request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        tool = db.get_custom_tool(tool_id)
+        if not tool:
+            raise HTTPException(status_code=404, detail="Custom tool not found")
+
+        body = await request.json()
+
+        name = body.get("name", "").strip().lower() if "name" in body else None
+        description = body.get("description", "").strip() if "description" in body else None
+        parameters = body.get("parameters") if "parameters" in body else None
+        code_body = body.get("code_body", "").strip() if "code_body" in body else None
+        enabled = body.get("enabled") if "enabled" in body else None
+
+        if name and name != tool["name"]:
+            _validate_tool_name(name, exclude_id=tool_id)
+        if code_body:
+            _validate_tool_code(code_body)
+
+        db.update_custom_tool(tool_id, name=name, description=description, parameters=parameters, code_body=code_body, enabled=enabled)
+        return JSONResponse({"ok": True})
+
+    @app.delete("/api/custom-tools/{tool_id}")
+    async def api_delete_custom_tool(tool_id: int, request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        if not db.delete_custom_tool(tool_id):
+            raise HTTPException(status_code=404, detail="Custom tool not found")
+        return JSONResponse({"ok": True})
+
+    @app.post("/api/custom-tools/test")
+    async def api_test_custom_tool(request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        body = await request.json()
+        code_body = body.get("code_body", "").strip()
+        params = body.get("params", {})
+
+        if not code_body:
+            raise HTTPException(status_code=400, detail="code_body is required")
+
+        _validate_tool_code(code_body)
+        result = await execute_custom_tool(code_body, params)
+        return JSONResponse({"output": result})
 
     return app

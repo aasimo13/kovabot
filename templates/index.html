@@ -76,6 +76,13 @@
                 <div id="tools-list"></div>
 
                 <div class="section-header">
+                    <h3>Custom Tools</h3>
+                    <button class="btn-sm" onclick="showCustomToolForm()">+ Add</button>
+                </div>
+                <div id="custom-tool-form-container"></div>
+                <div id="custom-tools-list"></div>
+
+                <div class="section-header">
                     <h3>Custom Commands</h3>
                     <button class="btn-sm" onclick="showCommandForm()">+ Add</button>
                 </div>
@@ -283,6 +290,7 @@
         loadMemory();
         loadFiles();
         loadTools();
+        loadCustomTools();
         loadCommands();
     }
 
@@ -453,6 +461,225 @@
             loadTools();
         } catch (e) {
             console.error('Failed to reset tool:', e);
+        }
+    }
+
+    // --- Custom Tools ---
+
+    async function loadCustomTools() {
+        try {
+            const res = await fetch('/api/custom-tools');
+            const data = await res.json();
+            const list = document.getElementById('custom-tools-list');
+            if (!data.tools || data.tools.length === 0) {
+                list.innerHTML = '<p style="color:var(--text-dim);font-size:0.85rem;">No custom tools yet.</p>';
+                return;
+            }
+            list.innerHTML = data.tools.map(t => {
+                const disabledClass = !t.enabled ? ' disabled' : '';
+                const checked = t.enabled ? ' checked' : '';
+                const params = t.parameters.map(p =>
+                    `<span class="param-badge">${escHtml(p.name)}: ${escHtml(p.type)}</span>`
+                ).join('');
+                return `<div class="custom-tool-card${disabledClass}">
+                    <div class="custom-tool-header">
+                        <span class="custom-tool-name">${escHtml(t.name)}</span>
+                        <div class="custom-tool-actions">
+                            <label class="toggle-switch">
+                                <input type="checkbox"${checked} onchange="toggleCustomTool(${t.id}, this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <button class="btn-xs" onclick="editCustomTool(${t.id})">Edit</button>
+                            <button class="btn-xs" onclick="deleteCustomTool(${t.id})">Del</button>
+                        </div>
+                    </div>
+                    <div class="custom-tool-desc">${escHtml(t.description)}</div>
+                    ${params ? '<div class="tool-params">' + params + '</div>' : ''}
+                </div>`;
+            }).join('');
+        } catch (e) {
+            console.error('Failed to load custom tools:', e);
+        }
+    }
+
+    function showCustomToolForm(editData) {
+        const container = document.getElementById('custom-tool-form-container');
+        const isEdit = !!editData;
+        const params = editData ? editData.parameters : [];
+        const paramRows = params.map((p, i) => buildParamRowHTML(i, p)).join('');
+
+        container.innerHTML = `<div class="custom-tool-form">
+            <label>Name (lowercase, underscores only)</label>
+            <input type="text" id="ct-name" placeholder="e.g. word_count" value="${editData ? escHtml(editData.name) : ''}" ${isEdit ? 'readonly style="opacity:0.6"' : ''}>
+            <label>Description</label>
+            <input type="text" id="ct-desc" placeholder="What this tool does" value="${editData ? escHtml(editData.description) : ''}">
+
+            <label>Parameters</label>
+            <div class="param-builder" id="ct-params">${paramRows}</div>
+            <button class="btn-add-param" onclick="addParamRow()">+ Add Parameter</button>
+
+            <label>Code (use print() for output; params are variables)</label>
+            <textarea class="code-area" id="ct-code" placeholder="# Parameters are available as variables\n# e.g. if you have a 'text' parameter:\nprint(len(text.split()))">${editData ? escHtml(editData.code_body) : ''}</textarea>
+
+            <div class="test-section">
+                <div class="test-row">
+                    <button class="btn-sm" onclick="testCustomTool()">Test</button>
+                    <span style="font-size:0.72rem;color:var(--text-dim)">Runs code with sample values</span>
+                </div>
+                <div class="test-output" id="ct-test-output"></div>
+            </div>
+
+            <div class="custom-tool-form-actions">
+                <button class="btn-sm" onclick="saveCustomTool(${editData ? editData.id : 'null'})">${isEdit ? 'Update' : 'Create'}</button>
+                <button class="btn-sm danger" onclick="hideCustomToolForm()">Cancel</button>
+            </div>
+        </div>`;
+    }
+
+    function buildParamRowHTML(index, data) {
+        const name = data ? data.name : '';
+        const type = data ? data.type : 'string';
+        const desc = data ? data.description : '';
+        const req = data && data.required ? ' checked' : '';
+        return `<div class="param-row">
+            <input type="text" placeholder="name" class="ct-param-name" value="${escHtml(name)}">
+            <select class="ct-param-type">
+                <option value="string"${type === 'string' ? ' selected' : ''}>string</option>
+                <option value="integer"${type === 'integer' ? ' selected' : ''}>integer</option>
+                <option value="number"${type === 'number' ? ' selected' : ''}>number</option>
+                <option value="boolean"${type === 'boolean' ? ' selected' : ''}>boolean</option>
+            </select>
+            <input type="text" placeholder="description" class="ct-param-desc" value="${escHtml(desc)}">
+            <label class="param-required-label"><input type="checkbox" class="ct-param-req"${req}> Req</label>
+            <button class="btn-remove-param" onclick="this.parentElement.remove()">&times;</button>
+        </div>`;
+    }
+
+    function addParamRow() {
+        const container = document.getElementById('ct-params');
+        const div = document.createElement('div');
+        div.innerHTML = buildParamRowHTML(container.children.length, null);
+        container.appendChild(div.firstElementChild);
+    }
+
+    function getFormParams() {
+        const rows = document.querySelectorAll('#ct-params .param-row');
+        const params = [];
+        rows.forEach(row => {
+            const name = row.querySelector('.ct-param-name').value.trim();
+            if (!name) return;
+            params.push({
+                name: name,
+                type: row.querySelector('.ct-param-type').value,
+                description: row.querySelector('.ct-param-desc').value.trim(),
+                required: row.querySelector('.ct-param-req').checked,
+            });
+        });
+        return params;
+    }
+
+    function hideCustomToolForm() {
+        document.getElementById('custom-tool-form-container').innerHTML = '';
+    }
+
+    async function testCustomTool() {
+        const code = document.getElementById('ct-code').value.trim();
+        const params = getFormParams();
+        if (!code) { alert('Enter code to test.'); return; }
+
+        // Build sample params
+        const sampleParams = {};
+        params.forEach(p => {
+            if (p.type === 'integer') sampleParams[p.name] = 0;
+            else if (p.type === 'number') sampleParams[p.name] = 0.0;
+            else if (p.type === 'boolean') sampleParams[p.name] = true;
+            else sampleParams[p.name] = 'sample text';
+        });
+
+        const outputEl = document.getElementById('ct-test-output');
+        outputEl.textContent = 'Running...';
+        outputEl.classList.add('visible');
+
+        try {
+            const res = await fetch('/api/custom-tools/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code_body: code, params: sampleParams }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                outputEl.textContent = 'Error: ' + (data.detail || 'Test failed');
+            } else {
+                outputEl.textContent = data.output;
+            }
+        } catch (e) {
+            outputEl.textContent = 'Error: ' + e.message;
+        }
+    }
+
+    async function saveCustomTool(editId) {
+        const name = document.getElementById('ct-name').value.trim().toLowerCase();
+        const description = document.getElementById('ct-desc').value.trim();
+        const code_body = document.getElementById('ct-code').value.trim();
+        const parameters = getFormParams();
+
+        if (!name || !description || !code_body) {
+            alert('Name, description, and code are required.');
+            return;
+        }
+
+        try {
+            const url = editId ? `/api/custom-tools/${editId}` : '/api/custom-tools';
+            const method = editId ? 'PUT' : 'POST';
+            const body = { name, description, parameters, code_body };
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                alert(err.detail || 'Failed to save tool');
+                return;
+            }
+            hideCustomToolForm();
+            loadCustomTools();
+        } catch (e) {
+            console.error('Failed to save custom tool:', e);
+        }
+    }
+
+    async function editCustomTool(id) {
+        try {
+            const res = await fetch('/api/custom-tools');
+            const data = await res.json();
+            const tool = data.tools.find(t => t.id === id);
+            if (tool) showCustomToolForm(tool);
+        } catch (e) {
+            console.error('Failed to load custom tool for edit:', e);
+        }
+    }
+
+    async function toggleCustomTool(id, enabled) {
+        try {
+            await fetch(`/api/custom-tools/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled }),
+            });
+            loadCustomTools();
+        } catch (e) {
+            console.error('Failed to toggle custom tool:', e);
+        }
+    }
+
+    async function deleteCustomTool(id) {
+        if (!confirm('Delete this custom tool?')) return;
+        try {
+            await fetch(`/api/custom-tools/${id}`, { method: 'DELETE' });
+            loadCustomTools();
+        } catch (e) {
+            console.error('Failed to delete custom tool:', e);
         }
     }
 

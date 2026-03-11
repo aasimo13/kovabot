@@ -87,7 +87,8 @@ def _restricted_import(name, *args, **kwargs):
     raise ImportError(f"Import of '{name}' is not allowed")
 
 
-def _run_code(code: str) -> str:
+def run_sandboxed(code: str, local_vars: dict | None = None) -> str:
+    """Run code in the RestrictedPython sandbox. If local_vars provided, inject them as globals."""
     try:
         byte_code = compile_restricted(code, filename="<sandbox>", mode="exec")
     except SyntaxError as e:
@@ -100,6 +101,10 @@ def _run_code(code: str) -> str:
     # Pre-load safe modules
     for name, mod in _SAFE_MODULES.items():
         glb[name] = mod
+
+    # Inject caller-provided variables (e.g. custom tool parameters)
+    if local_vars:
+        glb.update(local_vars)
 
     try:
         exec(byte_code, glb)
@@ -121,7 +126,7 @@ def _run_code(code: str) -> str:
 async def execute_python(code: str) -> str:
     try:
         result = await asyncio.wait_for(
-            asyncio.get_event_loop().run_in_executor(None, _run_code, code),
+            asyncio.get_event_loop().run_in_executor(None, run_sandboxed, code),
             timeout=TIMEOUT_SECONDS,
         )
         return result
@@ -129,4 +134,19 @@ async def execute_python(code: str) -> str:
         return f"Execution timed out after {TIMEOUT_SECONDS} seconds."
     except Exception as e:
         logger.error(f"Code execution error: {e}")
+        return f"Execution error: {e}"
+
+
+async def execute_custom_tool(code: str, params: dict) -> str:
+    """Execute a custom tool's code with the given parameters injected as variables."""
+    try:
+        result = await asyncio.wait_for(
+            asyncio.get_event_loop().run_in_executor(None, run_sandboxed, code, params),
+            timeout=TIMEOUT_SECONDS,
+        )
+        return result
+    except asyncio.TimeoutError:
+        return f"Execution timed out after {TIMEOUT_SECONDS} seconds."
+    except Exception as e:
+        logger.error(f"Custom tool execution error: {e}")
         return f"Execution error: {e}"

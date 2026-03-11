@@ -17,6 +17,7 @@ from config import (
     SYSTEM_PROMPT,
 )
 from tools import TOOL_REGISTRY, TOOL_SCHEMAS
+from tools.code_exec import execute_custom_tool
 
 logger = logging.getLogger(__name__)
 
@@ -73,28 +74,36 @@ def _build_system_prompt(chat_id: int) -> str:
 
 async def _execute_tool(tool_name: str, arguments: dict, chat_id: int) -> str:
     func = TOOL_REGISTRY.get(tool_name)
-    if not func:
-        return f"Unknown tool: {tool_name}"
+    if func:
+        sig = inspect.signature(func)
+        if "chat_id" in sig.parameters:
+            arguments["chat_id"] = chat_id
 
-    sig = inspect.signature(func)
-    if "chat_id" in sig.parameters:
-        arguments["chat_id"] = chat_id
+        try:
+            result = func(**arguments)
+            if asyncio.iscoroutine(result):
+                result = await result
+            return str(result)
+        except Exception as e:
+            logger.error(f"Tool {tool_name} error: {e}")
+            return f"Tool error: {e}"
 
-    try:
-        result = func(**arguments)
-        if asyncio.iscoroutine(result):
-            result = await result
-        return str(result)
-    except Exception as e:
-        logger.error(f"Tool {tool_name} error: {e}")
-        return f"Tool error: {e}"
+    # Check custom tools
+    custom = db.get_custom_tool_by_name(tool_name)
+    if custom and custom["enabled"]:
+        try:
+            result = await execute_custom_tool(custom["code_body"], arguments)
+            return result
+        except Exception as e:
+            logger.error(f"Custom tool {tool_name} error: {e}")
+            return f"Custom tool error: {e}"
+
+    return f"Unknown tool: {tool_name}"
 
 
 def _get_effective_tool_schemas() -> list[dict]:
-    """Return TOOL_SCHEMAS filtered by tool_overrides (disabled tools removed, descriptions overridden)."""
+    """Return TOOL_SCHEMAS filtered by tool_overrides (disabled tools removed, descriptions overridden), plus custom tools."""
     overrides = db.get_tool_overrides()
-    if not overrides:
-        return TOOL_SCHEMAS
 
     effective = []
     for schema in TOOL_SCHEMAS:
@@ -106,6 +115,32 @@ def _get_effective_tool_schemas() -> list[dict]:
             schema = copy.deepcopy(schema)
             schema["function"]["description"] = override["description_override"]
         effective.append(schema)
+
+    # Append enabled custom tools
+    for tool in db.get_custom_tools(enabled_only=True):
+        properties = {}
+        required = []
+        for param in tool["parameters"]:
+            properties[param["name"]] = {
+                "type": param.get("type", "string"),
+                "description": param.get("description", ""),
+            }
+            if param.get("required"):
+                required.append(param["name"])
+
+        effective.append({
+            "type": "function",
+            "function": {
+                "name": tool["name"],
+                "description": tool["description"],
+                "parameters": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                },
+            },
+        })
+
     return effective
 
 

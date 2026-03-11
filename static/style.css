@@ -797,3 +797,197 @@ body {
     gap: 6px;
     margin-top: 10px;
 }
+
+/* Custom tools */
+.custom-tool-card {
+    background: var(--surface-2);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+}
+
+.custom-tool-card.disabled {
+    opacity: 0.6;
+}
+
+.custom-tool-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.custom-tool-name {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--accent);
+}
+
+.custom-tool-desc {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    margin-top: 2px;
+}
+
+.custom-tool-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.custom-tool-form {
+    background: var(--surface-2);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    margin-bottom: 10px;
+}
+
+.custom-tool-form label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+    margin-top: 8px;
+}
+
+.custom-tool-form label:first-child {
+    margin-top: 0;
+}
+
+.custom-tool-form input,
+.custom-tool-form select,
+.custom-tool-form textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.8rem;
+    font-family: inherit;
+    padding: 8px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.custom-tool-form input:focus,
+.custom-tool-form select:focus,
+.custom-tool-form textarea:focus {
+    border-color: var(--accent);
+}
+
+.custom-tool-form textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+.custom-tool-form textarea.code-area {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.78rem;
+    min-height: 100px;
+    tab-size: 4;
+}
+
+/* Parameter builder */
+.param-builder {
+    margin-top: 4px;
+}
+
+.param-row {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 4px;
+    align-items: center;
+}
+
+.param-row input {
+    flex: 1;
+    min-width: 0;
+}
+
+.param-row select {
+    width: 80px;
+    flex-shrink: 0;
+}
+
+.param-row .param-required-label {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.param-row .param-required-label input[type="checkbox"] {
+    width: auto;
+}
+
+.param-row .btn-remove-param {
+    background: none;
+    border: none;
+    color: var(--danger);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0 4px;
+    flex-shrink: 0;
+}
+
+.param-row .btn-remove-param:hover {
+    color: #ff6b6b;
+}
+
+.btn-add-param {
+    font-size: 0.72rem;
+    padding: 3px 8px;
+    border: 1px dashed var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    background: none;
+    color: var(--text-dim);
+    margin-top: 4px;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.btn-add-param:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+/* Test output */
+.test-section {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.test-section .test-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.test-output {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 120px;
+    overflow-y: auto;
+    display: none;
+}
+
+.test-output.visible {
+    display: block;
+}
+
+.custom-tool-form-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+}
