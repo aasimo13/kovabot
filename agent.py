@@ -150,13 +150,20 @@ async def _execute_tool(tool_name: str, arguments: dict, chat_id: int) -> str:
     return f"Unknown tool: {tool_name}"
 
 
+DEVELOPER_TOOLS = {"run_command", "execute_python"}
+
+
 def _get_effective_tool_schemas() -> list[dict]:
     """Return TOOL_SCHEMAS filtered by tool_overrides (disabled tools removed, descriptions overridden), plus custom tools."""
     overrides = db.get_tool_overrides()
+    dev_mode = db.get_setting("developer_mode", "false") == "true"
 
     effective = []
     for schema in TOOL_SCHEMAS:
         name = schema["function"]["name"]
+        # Developer tools require developer_mode
+        if name in DEVELOPER_TOOLS and not dev_mode:
+            continue
         override = overrides.get(name)
         if override and not override["enabled"]:
             continue

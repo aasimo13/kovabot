@@ -707,6 +707,7 @@ def create_web_app() -> FastAPI:
             "briefing_enabled": str(BRIEFING_ENABLED).lower(),
             "briefing_time": BRIEFING_TIME,
             "follow_up_enabled": str(FOLLOW_UP_ENABLED).lower(),
+            "developer_mode": "false",
         }
 
         db_settings = db.get_all_settings()
@@ -726,6 +727,7 @@ def create_web_app() -> FastAPI:
             "system_prompt", "user_timezone", "max_tool_rounds",
             "tts_enabled", "tts_voice", "tts_model",
             "briefing_enabled", "briefing_time", "follow_up_enabled",
+            "developer_mode",
         }
         for key, value in body.items():
             if key in allowed_keys:

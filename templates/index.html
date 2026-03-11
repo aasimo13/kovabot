@@ -154,6 +154,7 @@
                 <button class="settings-nav-btn" data-section="voice" onclick="switchSettingsSection(this)">Voice & TTS</button>
                 <button class="settings-nav-btn" data-section="proactive" onclick="switchSettingsSection(this)">Proactive</button>
                 <button class="settings-nav-btn" data-section="integrations" onclick="switchSettingsSection(this)">Integrations</button>
+                <button class="settings-nav-btn" data-section="developer" onclick="switchSettingsSection(this)">Developer</button>
                 <button class="settings-nav-btn" data-section="data" onclick="switchSettingsSection(this)">Data</button>
             </nav>
 
@@ -273,6 +274,36 @@
                 <div class="settings-section" id="settings-integrations">
                     <h3>Integrations</h3>
                     <div id="integrations-list"></div>
+                </div>
+
+                <!-- Developer -->
+                <div class="settings-section" id="settings-developer">
+                    <h3>Developer Options</h3>
+                    <p class="setting-hint" style="margin-bottom:16px">Enable advanced capabilities for Kova. These give the agent real system access — use with care.</p>
+                    <div class="toggle-row">
+                        <div class="toggle-row-info">
+                            <div class="toggle-label-text">Developer Mode</div>
+                            <div class="toggle-hint">Enable CLI shell access and code execution tools. Kova can run commands like curl, git, grep, python, jq, and more. Destructive commands (rm, sudo) are blocked.</div>
+                        </div>
+                        <label class="toggle">
+                            <input type="checkbox" id="set-developer-mode">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="dev-tools-info" id="dev-tools-info">
+                        <div class="dev-tool-item">
+                            <span class="dev-tool-name">run_command</span>
+                            <span class="dev-tool-desc">Execute shell commands (curl, git, grep, ls, jq, python, etc.)</span>
+                        </div>
+                        <div class="dev-tool-item">
+                            <span class="dev-tool-name">execute_python</span>
+                            <span class="dev-tool-desc">Run Python code in a sandboxed environment</span>
+                        </div>
+                    </div>
+                    <div class="save-bar">
+                        <button class="btn btn-primary" onclick="saveSettings('developer')">Save Changes</button>
+                        <span class="save-status" id="save-status-developer">Saved</span>
+                    </div>
                 </div>
 
                 <!-- Data -->
@@ -900,8 +931,18 @@ async function loadSettings() {
         document.getElementById('set-briefing-enabled').checked = s.briefing_enabled === 'true';
         document.getElementById('set-briefing-time').value = s.briefing_time || '08:00';
         document.getElementById('set-followup-enabled').checked = s.follow_up_enabled === 'true';
+        document.getElementById('set-developer-mode').checked = s.developer_mode === 'true';
+        updateDevInfo();
     } catch (e) { console.error(e); }
 }
+
+function updateDevInfo() {
+    const on = document.getElementById('set-developer-mode').checked;
+    const info = document.getElementById('dev-tools-info');
+    if (info) info.style.opacity = on ? '1' : '0.4';
+}
+
+document.getElementById('set-developer-mode').addEventListener('change', updateDevInfo);
 
 async function saveSettings(section) {
     let data = {};
@@ -922,6 +963,10 @@ async function saveSettings(section) {
             briefing_enabled: document.getElementById('set-briefing-enabled').checked ? 'true' : 'false',
             briefing_time: document.getElementById('set-briefing-time').value,
             follow_up_enabled: document.getElementById('set-followup-enabled').checked ? 'true' : 'false',
+        };
+    } else if (section === 'developer') {
+        data = {
+            developer_mode: document.getElementById('set-developer-mode').checked ? 'true' : 'false',
         };
     }
     try {
