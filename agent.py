@@ -113,8 +113,31 @@ async def run_agent(chat_id: int, user_content: str | list) -> str:
                 tools=TOOL_SCHEMAS if TOOL_SCHEMAS else None,
             )
         except Exception as e:
-            logger.error(f"LLM API error: {e}")
-            return f"Sorry, I hit an error talking to the LLM: {e}"
+            logger.error(f"LLM API error (with tools): {e}")
+            # Retry without tools — Open Web UI may not support them
+            try:
+                response = await client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                )
+            except Exception as e2:
+                logger.error(f"LLM API error (without tools): {e2}")
+                return f"Sorry, I hit an error talking to the LLM: {e2}"
+
+        if response is None or not response.choices:
+            logger.warning("LLM returned None/empty response with tools, retrying without tools")
+            try:
+                response = await client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                )
+            except Exception as e:
+                logger.error(f"LLM API error (retry without tools): {e}")
+                return f"Sorry, I hit an error talking to the LLM: {e}"
+
+            if response is None or not response.choices:
+                logger.error("LLM returned None/empty even without tools")
+                return "Sorry, I couldn't get a response from the LLM."
 
         choice = response.choices[0]
         assistant_message = choice.message
