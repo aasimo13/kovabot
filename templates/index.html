@@ -77,8 +77,12 @@
 
                 <div class="section-header">
                     <h3>Custom Tools</h3>
-                    <button class="btn-sm" onclick="showCustomToolForm()">+ Add</button>
+                    <div class="section-header-actions">
+                        <button class="btn-sm" onclick="showImportForm()">Import</button>
+                        <button class="btn-sm" onclick="showCustomToolForm()">+ Add</button>
+                    </div>
                 </div>
+                <div id="import-form-container"></div>
                 <div id="custom-tool-form-container"></div>
                 <div id="custom-tools-list"></div>
 
@@ -680,6 +684,68 @@
             loadCustomTools();
         } catch (e) {
             console.error('Failed to delete custom tool:', e);
+        }
+    }
+
+    // --- Import Tools ---
+
+    function showImportForm() {
+        const container = document.getElementById('import-form-container');
+        container.innerHTML = `<div class="custom-tool-form">
+            <label>Paste tool JSON (single object or array)</label>
+            <textarea class="code-area" id="import-json" rows="6" placeholder='{"name": "word_count", "description": "Count words", "parameters": [{"name": "text", "type": "string", "description": "Input text", "required": true}], "code_body": "print(len(text.split()))"}'></textarea>
+            <div class="import-divider">— or —</div>
+            <label>Fetch from URL</label>
+            <input type="text" id="import-url" placeholder="https://example.com/tools.json">
+            <div id="import-result"></div>
+            <div class="custom-tool-form-actions">
+                <button class="btn-sm" onclick="submitImport()">Import</button>
+                <button class="btn-sm danger" onclick="hideImportForm()">Cancel</button>
+            </div>
+        </div>`;
+    }
+
+    function hideImportForm() {
+        document.getElementById('import-form-container').innerHTML = '';
+    }
+
+    async function submitImport() {
+        const jsonText = document.getElementById('import-json').value.trim();
+        const url = document.getElementById('import-url').value.trim();
+        const resultEl = document.getElementById('import-result');
+
+        if (!jsonText && !url) {
+            resultEl.className = 'import-result error visible';
+            resultEl.textContent = 'Paste JSON or enter a URL.';
+            return;
+        }
+
+        const body = jsonText ? { json: jsonText } : { url: url };
+        resultEl.className = 'import-result visible';
+        resultEl.textContent = 'Importing...';
+
+        try {
+            const res = await fetch('/api/custom-tools/import', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                resultEl.className = 'import-result error visible';
+                resultEl.textContent = data.detail || 'Import failed';
+                return;
+            }
+            let msg = `Imported: ${data.imported.join(', ')}`;
+            if (data.errors && data.errors.length > 0) {
+                msg += `\nErrors: ${data.errors.join('; ')}`;
+            }
+            resultEl.className = 'import-result success visible';
+            resultEl.textContent = msg;
+            loadCustomTools();
+        } catch (e) {
+            resultEl.className = 'import-result error visible';
+            resultEl.textContent = 'Error: ' + e.message;
         }
     }
 

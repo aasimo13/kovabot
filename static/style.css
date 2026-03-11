@@ -991,3 +991,44 @@ body {
     gap: 6px;
     margin-top: 10px;
 }
+
+/* Import form */
+.import-divider {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.75rem;
+    margin: 12px 0;
+    position: relative;
+}
+
+.import-divider::before,
+.import-divider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 30%;
+    height: 1px;
+    background: var(--border);
+}
+
+.import-divider::before { left: 0; }
+.import-divider::after { right: 0; }
+
+.import-result {
+    display: none;
+    font-size: 0.78rem;
+    padding: 8px;
+    border-radius: 6px;
+    margin-top: 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.import-result.visible { display: block; }
+.import-result.error { background: rgba(255, 76, 76, 0.15); color: var(--danger); }
+.import-result.success { background: rgba(76, 175, 80, 0.15); color: var(--success); }
+
+.section-header-actions {
+    display: flex;
+    gap: 6px;
+}

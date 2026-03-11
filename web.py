@@ -1,9 +1,11 @@
 import os
+import json
 import logging
 import mimetypes
 import re
 from pathlib import Path
 
+import aiohttp
 from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -450,5 +452,77 @@ def create_web_app() -> FastAPI:
         _validate_tool_code(code_body)
         result = await execute_custom_tool(code_body, params)
         return JSONResponse({"output": result})
+
+    @app.post("/api/custom-tools/import")
+    async def api_import_custom_tools(request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        body = await request.json()
+        raw_json = body.get("json")
+        url = body.get("url")
+
+        if not raw_json and not url:
+            raise HTTPException(status_code=400, detail="Provide 'json' or 'url'")
+
+        # Fetch JSON from URL if needed
+        if url:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                        if resp.status != 200:
+                            raise HTTPException(status_code=400, detail=f"URL returned status {resp.status}")
+                        raw_json = await resp.text()
+            except aiohttp.ClientError as e:
+                raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {e}")
+
+        # Parse JSON
+        try:
+            data = json.loads(raw_json)
+        except (json.JSONDecodeError, TypeError) as e:
+            raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+
+        # Normalise to list
+        if isinstance(data, dict):
+            data = [data]
+        if not isinstance(data, list):
+            raise HTTPException(status_code=400, detail="JSON must be an object or array of objects")
+
+        imported = []
+        errors = []
+        for i, tool in enumerate(data):
+            label = tool.get("name", f"item {i}")
+            if not isinstance(tool, dict):
+                errors.append(f"{label}: not an object")
+                continue
+
+            name = str(tool.get("name", "")).strip().lower()
+            description = str(tool.get("description", "")).strip()
+            code_body = str(tool.get("code_body", "")).strip()
+            parameters = tool.get("parameters", [])
+
+            if not name or not description or not code_body:
+                errors.append(f"{label}: name, description, and code_body are required")
+                continue
+
+            try:
+                _validate_tool_name(name)
+            except HTTPException as e:
+                errors.append(f"{name}: {e.detail}")
+                continue
+
+            try:
+                _validate_tool_code(code_body)
+            except HTTPException as e:
+                errors.append(f"{name}: {e.detail}")
+                continue
+
+            db.create_custom_tool(name, description, parameters, code_body)
+            imported.append(name)
+
+        if not imported and errors:
+            raise HTTPException(status_code=400, detail="; ".join(errors))
+
+        return JSONResponse({"ok": True, "imported": imported, "errors": errors})
 
     return app
