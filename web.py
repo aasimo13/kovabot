@@ -684,4 +684,79 @@ def create_web_app() -> FastAPI:
         plans = db.get_active_plans(chat_id)
         return JSONResponse({"plans": plans})
 
+    # --- Settings endpoints ---
+
+    @app.get("/api/settings")
+    async def api_settings(request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        from config import (
+            SYSTEM_PROMPT, USER_TIMEZONE, MAX_TOOL_ROUNDS,
+            TTS_ENABLED, TTS_VOICE, TTS_MODEL,
+            BRIEFING_ENABLED, BRIEFING_TIME, FOLLOW_UP_ENABLED,
+        )
+
+        defaults = {
+            "system_prompt": SYSTEM_PROMPT,
+            "user_timezone": USER_TIMEZONE,
+            "max_tool_rounds": str(MAX_TOOL_ROUNDS),
+            "tts_enabled": str(TTS_ENABLED).lower(),
+            "tts_voice": TTS_VOICE,
+            "tts_model": TTS_MODEL,
+            "briefing_enabled": str(BRIEFING_ENABLED).lower(),
+            "briefing_time": BRIEFING_TIME,
+            "follow_up_enabled": str(FOLLOW_UP_ENABLED).lower(),
+        }
+
+        db_settings = db.get_all_settings()
+        for key in defaults:
+            if key in db_settings:
+                defaults[key] = db_settings[key]
+
+        return JSONResponse(defaults)
+
+    @app.put("/api/settings")
+    async def api_update_settings(request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        body = await request.json()
+        allowed_keys = {
+            "system_prompt", "user_timezone", "max_tool_rounds",
+            "tts_enabled", "tts_voice", "tts_model",
+            "briefing_enabled", "briefing_time", "follow_up_enabled",
+        }
+        for key, value in body.items():
+            if key in allowed_keys:
+                db.set_setting(key, str(value))
+        return JSONResponse({"ok": True})
+
+    # --- Memory management endpoints ---
+
+    @app.delete("/api/memory/{category}/{key:path}")
+    async def api_delete_fact(category: str, key: str, request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        chat_id = WEB_CHAT_ID
+        if not chat_id:
+            raise HTTPException(status_code=400, detail="WEB_CHAT_ID not configured")
+
+        if not db.delete_fact_by_id(chat_id, category, key):
+            raise HTTPException(status_code=404, detail="Fact not found")
+        return JSONResponse({"ok": True})
+
+    @app.post("/api/memory/clear")
+    async def api_clear_memory(request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        chat_id = WEB_CHAT_ID
+        if not chat_id:
+            raise HTTPException(status_code=400, detail="WEB_CHAT_ID not configured")
+
+        db.delete_facts(chat_id)
+        return JSONResponse({"ok": True})
+
     return app

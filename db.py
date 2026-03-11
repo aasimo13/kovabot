@@ -194,6 +194,13 @@ def _init_schema(conn: sqlite3.Connection):
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS idx_confirmations_chat ON confirmations(chat_id, status);
+
+        -- Settings (key-value store for runtime configuration)
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
     """)
 
 
@@ -841,3 +848,45 @@ def update_confirmation_status(confirmation_id: int, status: str):
         (status, confirmation_id),
     )
     conn.commit()
+
+
+# --- Settings helpers ---
+
+def get_setting(key: str, default: str = "") -> str:
+    conn = get_conn()
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_setting(key: str, value: str):
+    conn = get_conn()
+    conn.execute(
+        """INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at""",
+        (key, value),
+    )
+    conn.commit()
+
+
+def get_all_settings() -> dict:
+    conn = get_conn()
+    rows = conn.execute("SELECT key, value FROM settings").fetchall()
+    return {r["key"]: r["value"] for r in rows}
+
+
+def delete_setting(key: str):
+    conn = get_conn()
+    conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+    conn.commit()
+
+
+# --- Fact deletion helper ---
+
+def delete_fact_by_id(chat_id: int, category: str, key: str) -> bool:
+    conn = get_conn()
+    cur = conn.execute(
+        "DELETE FROM facts WHERE chat_id = ? AND category = ? AND key = ?",
+        (chat_id, category, key),
+    )
+    conn.commit()
+    return cur.rowcount > 0

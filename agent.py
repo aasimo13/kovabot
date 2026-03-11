@@ -90,7 +90,7 @@ def _build_system_prompt(chat_id: int) -> str:
     facts = db.get_facts(chat_id)
     summary = db.get_conversation_summary(chat_id)
 
-    prompt = SYSTEM_PROMPT
+    prompt = db.get_setting("system_prompt", SYSTEM_PROMPT)
 
     if facts:
         fact_lines = "\n".join(f"- [{f['category']}] {f['key']}: {f['value']}" for f in facts)
@@ -224,9 +224,14 @@ async def run_agent(chat_id: int, user_content: str | list, status_callback=None
         messages.extend(history[:-1])
     messages.append({"role": "user", "content": user_content})
 
-    # Increase tool rounds if a plan is active
+    # Read max rounds from settings (DB overrides config)
+    max_rounds_str = db.get_setting("max_tool_rounds", str(MAX_TOOL_ROUNDS))
+    try:
+        base_rounds = int(max_rounds_str)
+    except ValueError:
+        base_rounds = MAX_TOOL_ROUNDS
     active_plans = db.get_active_plans(chat_id)
-    max_rounds = MAX_TOOL_ROUNDS + 5 if active_plans else MAX_TOOL_ROUNDS
+    max_rounds = base_rounds + 5 if active_plans else base_rounds
 
     # Agent loop
     for round_num in range(max_rounds):

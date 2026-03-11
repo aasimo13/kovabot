@@ -10,48 +10,51 @@
 </head>
 <body>
 
-<button class="mobile-toggle" onclick="toggleSidebar()">&#9776;</button>
+<!-- ===================== TOP NAV ===================== -->
+<nav class="topnav">
+    <div class="nav-left">
+        <div class="nav-logo">K</div>
+        <span class="nav-title">Kova</span>
+    </div>
+    <div class="nav-center">
+        <button class="nav-tab active" data-page="chat" onclick="switchPage(this)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span>Chat</span>
+        </button>
+        <button class="nav-tab" data-page="tools" onclick="switchPage(this)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <span>Tools</span>
+        </button>
+        <button class="nav-tab" data-page="settings" onclick="switchPage(this)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+            <span>Settings</span>
+        </button>
+    </div>
+    <div class="nav-right">
+        <button class="nav-icon-btn" id="notif-btn" onclick="toggleDrawer()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="badge" id="notif-badge"></span>
+        </button>
+    </div>
+</nav>
 
-<div class="drop-overlay" id="drop-overlay">Drop file to upload</div>
-
-<div class="app">
-    <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-            <div class="sidebar-header-row">
-                <div>
-                    <h1>Kova</h1>
-                    <p>Personal AI Agent</p>
-                </div>
-                <button class="sidebar-close" onclick="toggleSidebar()">&times;</button>
-            </div>
-        </div>
-
-        <div class="sidebar-tabs">
-            <button class="sidebar-tab active" data-panel="stats" onclick="switchTab(this)">Stats</button>
-            <button class="sidebar-tab" data-panel="memory" onclick="switchTab(this)">Memory</button>
-            <button class="sidebar-tab" data-panel="files" onclick="switchTab(this)">Files</button>
-            <button class="sidebar-tab" data-panel="tools" onclick="switchTab(this)">Tools</button>
-            <button class="sidebar-tab" data-panel="notifications" onclick="switchTab(this)">
-                Alerts<span class="notif-badge" id="notif-badge" style="display:none"></span>
-            </button>
-            <button class="sidebar-tab" data-panel="integrations" onclick="switchTab(this)">Integ.</button>
-        </div>
-
-        <div class="sidebar-content">
-            <!-- Stats panel -->
-            <div class="sidebar-panel active" id="panel-stats">
+<!-- ===================== CHAT PAGE ===================== -->
+<div class="page active" id="page-chat">
+    <div class="chat-layout">
+        <aside class="chat-sidebar" id="chat-sidebar">
+            <div class="sidebar-section">
+                <h3 class="sidebar-title">Overview</h3>
                 <div class="stat-grid">
                     <div class="stat-card">
-                        <div class="label">Your Messages</div>
-                        <div class="value" id="stat-user-msgs">-</div>
+                        <div class="label">Messages</div>
+                        <div class="value" id="stat-msgs">-</div>
                     </div>
                     <div class="stat-card">
-                        <div class="label">Kova Replies</div>
-                        <div class="value" id="stat-assistant-msgs">-</div>
+                        <div class="label">Replies</div>
+                        <div class="value" id="stat-replies">-</div>
                     </div>
                     <div class="stat-card">
-                        <div class="label">Facts Stored</div>
+                        <div class="label">Facts</div>
                         <div class="value" id="stat-facts">-</div>
                     </div>
                     <div class="stat-card">
@@ -59,993 +62,1001 @@
                         <div class="value" id="stat-reminders">-</div>
                     </div>
                 </div>
-                <div class="tool-usage" id="tool-usage"></div>
             </div>
 
-            <!-- Memory panel -->
-            <div class="sidebar-panel" id="panel-memory">
-                <div id="memory-list"></div>
+            <div class="sidebar-section">
+                <h3 class="sidebar-title">Memory <span class="badge-count" id="memory-count">0</span></h3>
+                <div class="mini-list" id="memory-mini"></div>
             </div>
 
-            <!-- Files panel -->
-            <div class="sidebar-panel" id="panel-files">
-                <div id="files-list"></div>
+            <div class="sidebar-section">
+                <h3 class="sidebar-title">Files <span class="badge-count" id="files-count">0</span></h3>
+                <div class="mini-list" id="files-mini"></div>
             </div>
 
-            <!-- Tools panel -->
-            <div class="sidebar-panel" id="panel-tools">
-                <div class="section-header">
-                    <h3>Built-in Tools</h3>
+            <div class="sidebar-section" id="tool-usage-section" style="display:none">
+                <h3 class="sidebar-title">Tool Usage</h3>
+                <div class="mini-list" id="tool-usage-list"></div>
+            </div>
+        </aside>
+
+        <main class="chat-main">
+            <div class="plan-bar" id="plan-bar" style="display:none"></div>
+            <div class="messages" id="messages"></div>
+            <div class="typing-indicator" id="typing"><span></span><span></span><span></span></div>
+            <div class="chat-input-area">
+                <div class="chat-input-row">
+                    <button class="icon-btn sidebar-toggle-btn" onclick="toggleChatSidebar()">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                    </button>
+                    <input type="file" id="file-input" onchange="handleFile(event)">
+                    <button class="icon-btn" onclick="document.getElementById('file-input').click()" title="Upload file">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                    </button>
+                    <textarea id="msg-input" placeholder="Message Kova..." rows="1" onkeydown="handleKeyDown(event)" oninput="autoResize(this)"></textarea>
+                    <button class="send-btn" id="send-btn" onclick="send()">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    </button>
                 </div>
-                <div id="tools-list"></div>
-
-                <div class="section-header">
-                    <h3>Custom Tools</h3>
-                    <div class="section-header-actions">
-                        <button class="btn-sm" onclick="showImportForm()">Import</button>
-                        <button class="btn-sm" onclick="showCustomToolForm()">+ Add</button>
-                    </div>
-                </div>
-                <div id="import-form-container"></div>
-                <div id="custom-tool-form-container"></div>
-                <div id="custom-tools-list"></div>
-
-                <div class="section-header">
-                    <h3>Custom Commands</h3>
-                    <button class="btn-sm" onclick="showCommandForm()">+ Add</button>
-                </div>
-                <div id="command-form-container"></div>
-                <div id="commands-list"></div>
             </div>
-
-            <!-- Notifications panel (Phase 4) -->
-            <div class="sidebar-panel" id="panel-notifications">
-                <div class="section-header">
-                    <h3>Notifications</h3>
-                </div>
-                <div id="notifications-list"></div>
-            </div>
-
-            <!-- Integrations panel (Phase 3) -->
-            <div class="sidebar-panel" id="panel-integrations">
-                <div class="section-header">
-                    <h3>Integrations</h3>
-                </div>
-                <div id="integrations-list"></div>
-            </div>
-        </div>
-    </aside>
-
-    <!-- Main chat area -->
-    <main class="main">
-        <!-- Active plan display (Phase 6) -->
-        <div class="plan-display" id="plan-display" style="display:none"></div>
-
-        <div class="chat-container" id="chat-container"></div>
-
-        <div class="typing-indicator" id="typing-indicator">
-            <span></span><span></span><span></span>
-        </div>
-
-        <div class="input-area">
-            <div class="input-row">
-                <input type="file" id="file-input" onchange="handleFileSelect(event)">
-                <button class="btn btn-icon" onclick="document.getElementById('file-input').click()" title="Upload file">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-                </button>
-                <textarea id="message-input" placeholder="Message Kova..." rows="1" onkeydown="handleKeyDown(event)" oninput="autoResize(this)"></textarea>
-                <button class="btn btn-primary" id="send-btn" onclick="sendMessage()">Send</button>
-            </div>
-        </div>
-    </main>
+        </main>
+    </div>
 </div>
 
-<script>
-    const chatContainer = document.getElementById('chat-container');
-    const messageInput = document.getElementById('message-input');
-    const sendBtn = document.getElementById('send-btn');
-    const typingIndicator = document.getElementById('typing-indicator');
+<!-- ===================== TOOLS PAGE ===================== -->
+<div class="page" id="page-tools">
+    <div class="page-scroll">
+        <div class="page-container">
+            <div class="page-header">
+                <h2>Tools</h2>
+                <p class="page-desc">Manage the tools and commands available to Kova</p>
+            </div>
 
-    // Configure marked
-    marked.setOptions({
-        breaks: true,
-        gfm: true,
-    });
+            <section class="content-section">
+                <div class="section-header">
+                    <h3>Built-in Tools</h3>
+                    <span class="section-meta" id="builtin-count">0 enabled</span>
+                </div>
+                <div class="tools-grid" id="builtin-tools-grid"></div>
+            </section>
 
-    // --- Chat ---
-
-    function addMessage(role, content, files, audioUrl) {
-        const div = document.createElement('div');
-        div.className = `message ${role}`;
-
-        if (role === 'assistant') {
-            div.innerHTML = DOMPurify.sanitize(marked.parse(content));
-        } else {
-            div.textContent = content;
-        }
-
-        // Add file download links
-        if (files && files.length > 0) {
-            files.forEach(f => {
-                const link = document.createElement('a');
-                link.href = `/api/files/${f.id}`;
-                link.className = 'file-link';
-                link.textContent = `\u{1F4CE} ${f.filename}`;
-                link.download = f.filename;
-                div.appendChild(link);
-            });
-        }
-
-        // Add audio player for TTS responses
-        if (audioUrl) {
-            const audioContainer = document.createElement('div');
-            audioContainer.className = 'tts-audio';
-            const audio = document.createElement('audio');
-            audio.controls = true;
-            audio.src = audioUrl;
-            audio.preload = 'metadata';
-            audioContainer.appendChild(audio);
-            div.appendChild(audioContainer);
-        }
-
-        chatContainer.appendChild(div);
-        scrollToBottom();
-    }
-
-    function scrollToBottom() {
-        chatContainer.scrollTop = chatContainer.scrollHeight;
-    }
-
-    function setLoading(loading) {
-        sendBtn.disabled = loading;
-        messageInput.disabled = loading;
-        typingIndicator.classList.toggle('visible', loading);
-        if (loading) scrollToBottom();
-    }
-
-    async function sendMessage() {
-        const text = messageInput.value.trim();
-        if (!text) return;
-
-        addMessage('user', text);
-        messageInput.value = '';
-        messageInput.style.height = 'auto';
-        setLoading(true);
-
-        try {
-            const res = await fetch('/api/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text }),
-            });
-
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.detail || 'Request failed');
-            }
-
-            const data = await res.json();
-            addMessage('assistant', data.reply, data.files, data.audio_url);
-            refreshSidebar();
-        } catch (e) {
-            addMessage('assistant', `Error: ${e.message}`);
-        } finally {
-            setLoading(false);
-            messageInput.focus();
-        }
-    }
-
-    function handleKeyDown(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    }
-
-    function autoResize(el) {
-        el.style.height = 'auto';
-        el.style.height = Math.min(el.scrollHeight, 160) + 'px';
-    }
-
-    // --- File Upload ---
-
-    async function handleFileSelect(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-        await uploadFile(file);
-        event.target.value = '';
-    }
-
-    async function uploadFile(file) {
-        addMessage('user', `\u{1F4CE} ${file.name}`);
-        setLoading(true);
-
-        try {
-            const formData = new FormData();
-            formData.append('file', file);
-
-            const res = await fetch('/api/upload', {
-                method: 'POST',
-                body: formData,
-            });
-
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.detail || 'Upload failed');
-            }
-
-            const data = await res.json();
-            addMessage('assistant', data.reply, data.files);
-            refreshSidebar();
-        } catch (e) {
-            addMessage('assistant', `Error uploading file: ${e.message}`);
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    // Drag and drop
-    let dragCounter = 0;
-    const dropOverlay = document.getElementById('drop-overlay');
-
-    document.addEventListener('dragenter', (e) => {
-        e.preventDefault();
-        dragCounter++;
-        dropOverlay.classList.add('visible');
-    });
-
-    document.addEventListener('dragleave', (e) => {
-        e.preventDefault();
-        dragCounter--;
-        if (dragCounter === 0) dropOverlay.classList.remove('visible');
-    });
-
-    document.addEventListener('dragover', (e) => e.preventDefault());
-
-    document.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dragCounter = 0;
-        dropOverlay.classList.remove('visible');
-        if (e.dataTransfer.files.length > 0) {
-            uploadFile(e.dataTransfer.files[0]);
-        }
-    });
-
-    // --- Sidebar ---
-
-    function switchTab(btn) {
-        document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.sidebar-panel').forEach(p => p.classList.remove('active'));
-        btn.classList.add('active');
-        document.getElementById(`panel-${btn.dataset.panel}`).classList.add('active');
-    }
-
-    function toggleSidebar() {
-        document.getElementById('sidebar').classList.toggle('open');
-    }
-
-    async function refreshSidebar() {
-        loadStats();
-        loadMemory();
-        loadFiles();
-        loadTools();
-        loadCustomTools();
-        loadCommands();
-        loadNotifications();
-        loadIntegrations();
-        loadPlans();
-    }
-
-    async function loadStats() {
-        try {
-            const res = await fetch('/api/stats');
-            const data = await res.json();
-            document.getElementById('stat-user-msgs').textContent = data.user_messages ?? '-';
-            document.getElementById('stat-assistant-msgs').textContent = data.assistant_messages ?? '-';
-            document.getElementById('stat-facts').textContent = data.facts_stored ?? '-';
-            document.getElementById('stat-reminders').textContent = data.active_reminders ?? '-';
-
-            const toolDiv = document.getElementById('tool-usage');
-            if (data.tool_calls && data.tool_calls.length > 0) {
-                toolDiv.innerHTML = '<h3>Tool Usage</h3>' +
-                    data.tool_calls.map(t => `<div class="tool-item"><span>${t.tool_name}</span><span>${t.cnt}</span></div>`).join('');
-            } else {
-                toolDiv.innerHTML = '';
-            }
-        } catch (e) {
-            console.error('Failed to load stats:', e);
-        }
-    }
-
-    async function loadMemory() {
-        try {
-            const res = await fetch('/api/memory');
-            const data = await res.json();
-            const list = document.getElementById('memory-list');
-            if (!data.facts || data.facts.length === 0) {
-                list.innerHTML = '<p style="color:var(--text-dim);font-size:0.85rem;">No facts stored yet.</p>';
-                return;
-            }
-            list.innerHTML = data.facts.map(f =>
-                `<div class="fact-item">
-                    <div class="fact-category">${f.category}</div>
-                    <div class="fact-key">${f.key}</div>
-                    <div class="fact-value">${f.value}</div>
-                </div>`
-            ).join('');
-        } catch (e) {
-            console.error('Failed to load memory:', e);
-        }
-    }
-
-    async function loadFiles() {
-        try {
-            const res = await fetch('/api/files');
-            const data = await res.json();
-            const list = document.getElementById('files-list');
-            if (!data.files || data.files.length === 0) {
-                list.innerHTML = '<p style="color:var(--text-dim);font-size:0.85rem;">No files yet.</p>';
-                return;
-            }
-            list.innerHTML = data.files.map(f =>
-                `<div class="file-item">
-                    <a href="/api/files/${f.id}" download>${f.filename}</a>
-                    <span class="file-meta">${f.source} &middot; ${f.created_at ? f.created_at.slice(0, 10) : ''}</span>
-                </div>`
-            ).join('');
-        } catch (e) {
-            console.error('Failed to load files:', e);
-        }
-    }
-
-    // --- Load history on page load ---
-
-    async function loadHistory() {
-        try {
-            const res = await fetch('/api/history?limit=50');
-            const data = await res.json();
-            if (data.messages && data.messages.length > 0) {
-                data.messages.forEach(m => addMessage(m.role, m.content));
-            } else {
-                chatContainer.innerHTML = `
-                    <div class="empty-state">
-                        <div class="icon">&#128172;</div>
-                        <p>Send a message to start chatting with Kova</p>
-                    </div>`;
-            }
-        } catch (e) {
-            console.error('Failed to load history:', e);
-        }
-    }
-
-    // --- Tools ---
-
-    async function loadTools() {
-        try {
-            const res = await fetch('/api/tools');
-            const data = await res.json();
-            const list = document.getElementById('tools-list');
-            if (!data.tools || data.tools.length === 0) {
-                list.innerHTML = '<p style="color:var(--text-dim);font-size:0.85rem;">No tools available.</p>';
-                return;
-            }
-            list.innerHTML = data.tools.map(t => {
-                const disabled = !t.enabled ? ' disabled' : '';
-                const checked = t.enabled ? ' checked' : '';
-                const desc = t.description_override || t.description;
-                const isOverridden = !!t.description_override;
-                const params = t.parameters.map(p => `<span class="param-badge">${escHtml(p)}</span>`).join('');
-                return `<div class="tool-card${disabled}">
-                    <div class="tool-card-header">
-                        <label class="toggle-switch">
-                            <input type="checkbox"${checked} onchange="toggleTool('${escHtml(t.name)}', this.checked)">
-                            <span class="toggle-slider"></span>
-                        </label>
-                        <span class="tool-name">${escHtml(t.name)}</span>
+            <section class="content-section">
+                <div class="section-header">
+                    <h3>Custom Tools</h3>
+                    <div class="section-actions">
+                        <button class="btn btn-secondary btn-sm" onclick="showImportForm()">Import</button>
+                        <button class="btn btn-primary btn-sm" onclick="showCustomToolForm()">Create Tool</button>
                     </div>
-                    <textarea class="tool-desc-area" rows="2"
-                        data-tool="${escHtml(t.name)}"
-                        data-default="${escHtml(t.description)}"
-                        onblur="saveToolDesc(this)">${escHtml(desc)}</textarea>
-                    ${params ? '<div class="tool-params">' + params + '</div>' : ''}
-                    ${isOverridden ? '<div class="tool-actions"><button class="btn-xs" onclick="resetToolDesc(\'' + escHtml(t.name) + '\')">Reset to default</button></div>' : ''}
-                </div>`;
-            }).join('');
-        } catch (e) {
-            console.error('Failed to load tools:', e);
-        }
-    }
+                </div>
+                <div id="import-form-area"></div>
+                <div id="custom-tool-form-area"></div>
+                <div id="custom-tools-list"></div>
+            </section>
 
-    function escHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-    }
+            <section class="content-section">
+                <div class="section-header">
+                    <h3>Custom Commands</h3>
+                    <button class="btn btn-primary btn-sm" onclick="showCommandForm()">Create Command</button>
+                </div>
+                <div id="command-form-area"></div>
+                <div id="commands-list"></div>
+            </section>
+        </div>
+    </div>
+</div>
 
-    async function toggleTool(name, enabled) {
-        try {
-            await fetch(`/api/tools/${name}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ enabled }),
-            });
-            loadTools();
-        } catch (e) {
-            console.error('Failed to toggle tool:', e);
-        }
-    }
+<!-- ===================== SETTINGS PAGE ===================== -->
+<div class="page" id="page-settings">
+    <div class="page-scroll">
+        <div class="settings-layout">
+            <nav class="settings-nav">
+                <button class="settings-nav-btn active" data-section="general" onclick="switchSettingsSection(this)">General</button>
+                <button class="settings-nav-btn" data-section="voice" onclick="switchSettingsSection(this)">Voice & TTS</button>
+                <button class="settings-nav-btn" data-section="proactive" onclick="switchSettingsSection(this)">Proactive</button>
+                <button class="settings-nav-btn" data-section="integrations" onclick="switchSettingsSection(this)">Integrations</button>
+                <button class="settings-nav-btn" data-section="data" onclick="switchSettingsSection(this)">Data</button>
+            </nav>
 
-    async function saveToolDesc(textarea) {
-        const name = textarea.dataset.tool;
-        const defaultDesc = textarea.dataset.default;
-        const value = textarea.value.trim();
-        const override = (value && value !== defaultDesc) ? value : '';
-        try {
-            await fetch(`/api/tools/${name}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ description_override: override }),
-            });
-            loadTools();
-        } catch (e) {
-            console.error('Failed to save tool description:', e);
-        }
-    }
-
-    async function resetToolDesc(name) {
-        try {
-            await fetch(`/api/tools/${name}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ reset: true }),
-            });
-            loadTools();
-        } catch (e) {
-            console.error('Failed to reset tool:', e);
-        }
-    }
-
-    // --- Custom Tools ---
-
-    async function loadCustomTools() {
-        try {
-            const res = await fetch('/api/custom-tools');
-            const data = await res.json();
-            const list = document.getElementById('custom-tools-list');
-            if (!data.tools || data.tools.length === 0) {
-                list.innerHTML = '<p style="color:var(--text-dim);font-size:0.85rem;">No custom tools yet.</p>';
-                return;
-            }
-            list.innerHTML = data.tools.map(t => {
-                const disabledClass = !t.enabled ? ' disabled' : '';
-                const checked = t.enabled ? ' checked' : '';
-                const params = t.parameters.map(p =>
-                    `<span class="param-badge">${escHtml(p.name)}: ${escHtml(p.type)}</span>`
-                ).join('');
-                return `<div class="custom-tool-card${disabledClass}">
-                    <div class="custom-tool-header">
-                        <span class="custom-tool-name">${escHtml(t.name)}</span>
-                        <div class="custom-tool-actions">
-                            <label class="toggle-switch">
-                                <input type="checkbox"${checked} onchange="toggleCustomTool(${t.id}, this.checked)">
-                                <span class="toggle-slider"></span>
-                            </label>
-                            <button class="btn-xs" onclick="editCustomTool(${t.id})">Edit</button>
-                            <button class="btn-xs" onclick="deleteCustomTool(${t.id})">Del</button>
+            <div class="settings-content">
+                <!-- General -->
+                <div class="settings-section active" id="settings-general">
+                    <h3>General</h3>
+                    <div class="setting-group">
+                        <label>System Prompt</label>
+                        <p class="setting-hint">The core instructions that define Kova's personality, behavior, and tool usage</p>
+                        <textarea class="setting-textarea" id="set-system-prompt" rows="14"></textarea>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-group">
+                            <label>Timezone</label>
+                            <select class="setting-select" id="set-timezone">
+                                <option value="UTC">UTC</option>
+                                <option value="US/Eastern">US/Eastern</option>
+                                <option value="US/Central">US/Central</option>
+                                <option value="US/Mountain">US/Mountain</option>
+                                <option value="US/Pacific">US/Pacific</option>
+                                <option value="Europe/London">Europe/London</option>
+                                <option value="Europe/Paris">Europe/Paris</option>
+                                <option value="Europe/Berlin">Europe/Berlin</option>
+                                <option value="Asia/Tokyo">Asia/Tokyo</option>
+                                <option value="Asia/Shanghai">Asia/Shanghai</option>
+                                <option value="Asia/Kolkata">Asia/Kolkata</option>
+                                <option value="Australia/Sydney">Australia/Sydney</option>
+                            </select>
+                        </div>
+                        <div class="setting-group">
+                            <label>Max Tool Rounds</label>
+                            <p class="setting-hint">Max consecutive tool calls per message</p>
+                            <input class="setting-input" type="number" id="set-max-rounds" min="1" max="30" value="10">
                         </div>
                     </div>
-                    <div class="custom-tool-desc">${escHtml(t.description)}</div>
-                    ${params ? '<div class="tool-params">' + params + '</div>' : ''}
-                </div>`;
-            }).join('');
-        } catch (e) {
-            console.error('Failed to load custom tools:', e);
-        }
-    }
-
-    function showCustomToolForm(editData) {
-        const container = document.getElementById('custom-tool-form-container');
-        const isEdit = !!editData;
-        const params = editData ? editData.parameters : [];
-        const paramRows = params.map((p, i) => buildParamRowHTML(i, p)).join('');
-
-        container.innerHTML = `<div class="custom-tool-form">
-            <label>Name (lowercase, underscores only)</label>
-            <input type="text" id="ct-name" placeholder="e.g. word_count" value="${editData ? escHtml(editData.name) : ''}" ${isEdit ? 'readonly style="opacity:0.6"' : ''}>
-            <label>Description</label>
-            <input type="text" id="ct-desc" placeholder="What this tool does" value="${editData ? escHtml(editData.description) : ''}">
-
-            <label>Parameters</label>
-            <div class="param-builder" id="ct-params">${paramRows}</div>
-            <button class="btn-add-param" onclick="addParamRow()">+ Add Parameter</button>
-
-            <label>Code (use print() for output; params are variables)</label>
-            <textarea class="code-area" id="ct-code" placeholder="# Parameters are available as variables\n# e.g. if you have a 'text' parameter:\nprint(len(text.split()))">${editData ? escHtml(editData.code_body) : ''}</textarea>
-
-            <div class="test-section">
-                <div class="test-row">
-                    <button class="btn-sm" onclick="testCustomTool()">Test</button>
-                    <span style="font-size:0.72rem;color:var(--text-dim)">Runs code with sample values</span>
-                </div>
-                <div class="test-output" id="ct-test-output"></div>
-            </div>
-
-            <div class="custom-tool-form-actions">
-                <button class="btn-sm" onclick="saveCustomTool(${editData ? editData.id : 'null'})">${isEdit ? 'Update' : 'Create'}</button>
-                <button class="btn-sm danger" onclick="hideCustomToolForm()">Cancel</button>
-            </div>
-        </div>`;
-    }
-
-    function buildParamRowHTML(index, data) {
-        const name = data ? data.name : '';
-        const type = data ? data.type : 'string';
-        const desc = data ? data.description : '';
-        const req = data && data.required ? ' checked' : '';
-        return `<div class="param-row">
-            <input type="text" placeholder="name" class="ct-param-name" value="${escHtml(name)}">
-            <select class="ct-param-type">
-                <option value="string"${type === 'string' ? ' selected' : ''}>string</option>
-                <option value="integer"${type === 'integer' ? ' selected' : ''}>integer</option>
-                <option value="number"${type === 'number' ? ' selected' : ''}>number</option>
-                <option value="boolean"${type === 'boolean' ? ' selected' : ''}>boolean</option>
-            </select>
-            <input type="text" placeholder="description" class="ct-param-desc" value="${escHtml(desc)}">
-            <label class="param-required-label"><input type="checkbox" class="ct-param-req"${req}> Req</label>
-            <button class="btn-remove-param" onclick="this.parentElement.remove()">&times;</button>
-        </div>`;
-    }
-
-    function addParamRow() {
-        const container = document.getElementById('ct-params');
-        const div = document.createElement('div');
-        div.innerHTML = buildParamRowHTML(container.children.length, null);
-        container.appendChild(div.firstElementChild);
-    }
-
-    function getFormParams() {
-        const rows = document.querySelectorAll('#ct-params .param-row');
-        const params = [];
-        rows.forEach(row => {
-            const name = row.querySelector('.ct-param-name').value.trim();
-            if (!name) return;
-            params.push({
-                name: name,
-                type: row.querySelector('.ct-param-type').value,
-                description: row.querySelector('.ct-param-desc').value.trim(),
-                required: row.querySelector('.ct-param-req').checked,
-            });
-        });
-        return params;
-    }
-
-    function hideCustomToolForm() {
-        document.getElementById('custom-tool-form-container').innerHTML = '';
-    }
-
-    async function testCustomTool() {
-        const code = document.getElementById('ct-code').value.trim();
-        const params = getFormParams();
-        if (!code) { alert('Enter code to test.'); return; }
-
-        const sampleParams = {};
-        params.forEach(p => {
-            if (p.type === 'integer') sampleParams[p.name] = 0;
-            else if (p.type === 'number') sampleParams[p.name] = 0.0;
-            else if (p.type === 'boolean') sampleParams[p.name] = true;
-            else sampleParams[p.name] = 'sample text';
-        });
-
-        const outputEl = document.getElementById('ct-test-output');
-        outputEl.textContent = 'Running...';
-        outputEl.classList.add('visible');
-
-        try {
-            const res = await fetch('/api/custom-tools/test', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code_body: code, params: sampleParams }),
-            });
-            const data = await res.json();
-            if (!res.ok) {
-                outputEl.textContent = 'Error: ' + (data.detail || 'Test failed');
-            } else {
-                outputEl.textContent = data.output;
-            }
-        } catch (e) {
-            outputEl.textContent = 'Error: ' + e.message;
-        }
-    }
-
-    async function saveCustomTool(editId) {
-        const name = document.getElementById('ct-name').value.trim().toLowerCase();
-        const description = document.getElementById('ct-desc').value.trim();
-        const code_body = document.getElementById('ct-code').value.trim();
-        const parameters = getFormParams();
-
-        if (!name || !description || !code_body) {
-            alert('Name, description, and code are required.');
-            return;
-        }
-
-        try {
-            const url = editId ? `/api/custom-tools/${editId}` : '/api/custom-tools';
-            const method = editId ? 'PUT' : 'POST';
-            const body = { name, description, parameters, code_body };
-            const res = await fetch(url, {
-                method,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                alert(err.detail || 'Failed to save tool');
-                return;
-            }
-            hideCustomToolForm();
-            loadCustomTools();
-        } catch (e) {
-            console.error('Failed to save custom tool:', e);
-        }
-    }
-
-    async function editCustomTool(id) {
-        try {
-            const res = await fetch('/api/custom-tools');
-            const data = await res.json();
-            const tool = data.tools.find(t => t.id === id);
-            if (tool) showCustomToolForm(tool);
-        } catch (e) {
-            console.error('Failed to load custom tool for edit:', e);
-        }
-    }
-
-    async function toggleCustomTool(id, enabled) {
-        try {
-            await fetch(`/api/custom-tools/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ enabled }),
-            });
-            loadCustomTools();
-        } catch (e) {
-            console.error('Failed to toggle custom tool:', e);
-        }
-    }
-
-    async function deleteCustomTool(id) {
-        if (!confirm('Delete this custom tool?')) return;
-        try {
-            await fetch(`/api/custom-tools/${id}`, { method: 'DELETE' });
-            loadCustomTools();
-        } catch (e) {
-            console.error('Failed to delete custom tool:', e);
-        }
-    }
-
-    // --- Import Tools ---
-
-    function showImportForm() {
-        const container = document.getElementById('import-form-container');
-        container.innerHTML = `<div class="custom-tool-form">
-            <label>Paste tool JSON (single object or array)</label>
-            <textarea class="code-area" id="import-json" rows="6" placeholder='{"name": "word_count", "description": "Count words", "parameters": [{"name": "text", "type": "string", "description": "Input text", "required": true}], "code_body": "print(len(text.split()))"}'></textarea>
-            <div class="import-divider">&mdash; or &mdash;</div>
-            <label>Fetch from URL</label>
-            <input type="text" id="import-url" placeholder="https://example.com/tools.json">
-            <div id="import-result"></div>
-            <div class="custom-tool-form-actions">
-                <button class="btn-sm" onclick="submitImport()">Import</button>
-                <button class="btn-sm danger" onclick="hideImportForm()">Cancel</button>
-            </div>
-        </div>`;
-    }
-
-    function hideImportForm() {
-        document.getElementById('import-form-container').innerHTML = '';
-    }
-
-    async function submitImport() {
-        const jsonText = document.getElementById('import-json').value.trim();
-        const url = document.getElementById('import-url').value.trim();
-        const resultEl = document.getElementById('import-result');
-
-        if (!jsonText && !url) {
-            resultEl.className = 'import-result error visible';
-            resultEl.textContent = 'Paste JSON or enter a URL.';
-            return;
-        }
-
-        const body = jsonText ? { json: jsonText } : { url: url };
-        resultEl.className = 'import-result visible';
-        resultEl.textContent = 'Importing...';
-
-        try {
-            const res = await fetch('/api/custom-tools/import', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            const data = await res.json();
-            if (!res.ok) {
-                resultEl.className = 'import-result error visible';
-                resultEl.textContent = data.detail || 'Import failed';
-                return;
-            }
-            let msg = `Imported: ${data.imported.join(', ')}`;
-            if (data.errors && data.errors.length > 0) {
-                msg += `\nErrors: ${data.errors.join('; ')}`;
-            }
-            resultEl.className = 'import-result success visible';
-            resultEl.textContent = msg;
-            loadCustomTools();
-        } catch (e) {
-            resultEl.className = 'import-result error visible';
-            resultEl.textContent = 'Error: ' + e.message;
-        }
-    }
-
-    // --- Custom Commands ---
-
-    async function loadCommands() {
-        try {
-            const res = await fetch('/api/commands');
-            const data = await res.json();
-            const list = document.getElementById('commands-list');
-            if (!data.commands || data.commands.length === 0) {
-                list.innerHTML = '<p style="color:var(--text-dim);font-size:0.85rem;">No custom commands yet.</p>';
-                return;
-            }
-            list.innerHTML = data.commands.map(c => `<div class="cmd-card">
-                <div class="cmd-card-header">
-                    <span class="cmd-name">/${escHtml(c.name)}</span>
-                    <div class="cmd-actions">
-                        <button class="btn-xs" onclick="useCommand(${c.id}, '${escHtml(c.name)}', \`${escHtml(c.prompt_template)}\`)">Use</button>
-                        <button class="btn-xs" onclick="editCommand(${c.id})">Edit</button>
-                        <button class="btn-xs" onclick="deleteCommand(${c.id})">Del</button>
+                    <div class="save-bar">
+                        <button class="btn btn-primary" onclick="saveSettings('general')">Save Changes</button>
+                        <span class="save-status" id="save-status-general">Saved</span>
                     </div>
                 </div>
-                ${c.description ? '<div class="cmd-desc">' + escHtml(c.description) + '</div>' : ''}
-                <div class="cmd-template">${escHtml(c.prompt_template)}</div>
-            </div>`).join('');
-        } catch (e) {
-            console.error('Failed to load commands:', e);
-        }
-    }
 
-    function showCommandForm(editData) {
-        const container = document.getElementById('command-form-container');
-        const isEdit = !!editData;
-        container.innerHTML = `<div class="cmd-form">
-            <label>Name (no spaces)</label>
-            <input type="text" id="cmd-name" placeholder="e.g. summarize" value="${editData ? escHtml(editData.name) : ''}">
-            <label>Description</label>
-            <input type="text" id="cmd-desc" placeholder="What this command does" value="${editData ? escHtml(editData.description) : ''}">
-            <label>Prompt Template (use {input} for user input)</label>
-            <textarea id="cmd-template" placeholder="e.g. Summarize this: {input}">${editData ? escHtml(editData.prompt_template) : ''}</textarea>
-            <div class="cmd-form-actions">
-                <button class="btn-sm" onclick="saveCommand(${editData ? editData.id : 'null'})">${isEdit ? 'Update' : 'Create'}</button>
-                <button class="btn-sm danger" onclick="hideCommandForm()">Cancel</button>
+                <!-- Voice & TTS -->
+                <div class="settings-section" id="settings-voice">
+                    <h3>Voice & TTS</h3>
+                    <div class="toggle-row">
+                        <div class="toggle-row-info">
+                            <div class="toggle-label-text">Enable Text-to-Speech</div>
+                            <div class="toggle-hint">Generate voice audio when user sends voice messages or asks to "read aloud"</div>
+                        </div>
+                        <label class="toggle">
+                            <input type="checkbox" id="set-tts-enabled">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-group">
+                            <label>Voice</label>
+                            <select class="setting-select" id="set-tts-voice">
+                                <option value="alloy">Alloy</option>
+                                <option value="echo">Echo</option>
+                                <option value="fable">Fable</option>
+                                <option value="onyx">Onyx</option>
+                                <option value="nova">Nova</option>
+                                <option value="shimmer">Shimmer</option>
+                            </select>
+                        </div>
+                        <div class="setting-group">
+                            <label>Model</label>
+                            <select class="setting-select" id="set-tts-model">
+                                <option value="tts-1">TTS-1 (faster)</option>
+                                <option value="tts-1-hd">TTS-1-HD (higher quality)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="save-bar">
+                        <button class="btn btn-primary" onclick="saveSettings('voice')">Save Changes</button>
+                        <span class="save-status" id="save-status-voice">Saved</span>
+                    </div>
+                </div>
+
+                <!-- Proactive -->
+                <div class="settings-section" id="settings-proactive">
+                    <h3>Proactive Intelligence</h3>
+                    <div class="toggle-row">
+                        <div class="toggle-row-info">
+                            <div class="toggle-label-text">Morning Briefing</div>
+                            <div class="toggle-hint">Receive a daily summary of weather, calendar, and tasks in Telegram</div>
+                        </div>
+                        <label class="toggle">
+                            <input type="checkbox" id="set-briefing-enabled">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="setting-group">
+                        <label>Briefing Time</label>
+                        <p class="setting-hint">Time of day to send the morning briefing (in your timezone)</p>
+                        <input class="setting-input" type="time" id="set-briefing-time" value="08:00">
+                    </div>
+                    <div class="toggle-row">
+                        <div class="toggle-row-info">
+                            <div class="toggle-label-text">Smart Follow-ups</div>
+                            <div class="toggle-hint">Kova checks in after reminders fire to ask if you handled them</div>
+                        </div>
+                        <label class="toggle">
+                            <input type="checkbox" id="set-followup-enabled">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="save-bar">
+                        <button class="btn btn-primary" onclick="saveSettings('proactive')">Save Changes</button>
+                        <span class="save-status" id="save-status-proactive">Saved</span>
+                    </div>
+                </div>
+
+                <!-- Integrations -->
+                <div class="settings-section" id="settings-integrations">
+                    <h3>Integrations</h3>
+                    <div id="integrations-list"></div>
+                </div>
+
+                <!-- Data -->
+                <div class="settings-section" id="settings-data">
+                    <h3>Data Management</h3>
+                    <div class="setting-group">
+                        <label>Memory / Stored Facts</label>
+                        <p class="setting-hint">All facts Kova has learned about you. Click the X to delete individual facts.</p>
+                        <div class="data-list" id="data-memory-list"></div>
+                    </div>
+                    <div class="danger-zone">
+                        <h4>Danger Zone</h4>
+                        <p>Permanently delete all stored facts from Kova's memory. This cannot be undone.</p>
+                        <button class="btn btn-danger btn-sm" onclick="clearAllMemory()">Clear All Memory</button>
+                    </div>
+                </div>
             </div>
-        </div>`;
+        </div>
+    </div>
+</div>
+
+<!-- ===================== NOTIFICATION DRAWER ===================== -->
+<div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+<div class="drawer" id="notif-drawer">
+    <div class="drawer-header">
+        <h3>Notifications</h3>
+        <button class="drawer-close" onclick="closeDrawer()">&times;</button>
+    </div>
+    <div class="drawer-body" id="notif-list"></div>
+</div>
+
+<!-- ===================== DROP OVERLAY ===================== -->
+<div class="drop-overlay" id="drop-overlay">Drop file to upload</div>
+
+<!-- ===================== TOAST ===================== -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ======================== GLOBALS ========================
+const msgContainer = document.getElementById('messages');
+const msgInput = document.getElementById('msg-input');
+const sendBtn = document.getElementById('send-btn');
+const typingEl = document.getElementById('typing');
+
+marked.setOptions({ breaks: true, gfm: true });
+
+// ======================== NAVIGATION ========================
+function switchPage(btn) {
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('page-' + btn.dataset.page).classList.add('active');
+    // Load data for the page
+    if (btn.dataset.page === 'tools') { loadBuiltinTools(); loadCustomTools(); loadCommands(); }
+    if (btn.dataset.page === 'settings') { loadSettings(); loadIntegrations(); loadDataMemory(); }
+}
+
+function switchSettingsSection(btn) {
+    document.querySelectorAll('.settings-nav-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.settings-section').forEach(s => s.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('settings-' + btn.dataset.section).classList.add('active');
+    if (btn.dataset.section === 'data') loadDataMemory();
+    if (btn.dataset.section === 'integrations') loadIntegrations();
+}
+
+function toggleChatSidebar() {
+    document.getElementById('chat-sidebar').classList.toggle('open');
+}
+
+// ======================== NOTIFICATION DRAWER ========================
+function toggleDrawer() {
+    const d = document.getElementById('notif-drawer');
+    const o = document.getElementById('drawer-overlay');
+    const isOpen = d.classList.contains('open');
+    if (isOpen) { closeDrawer(); } else { d.classList.add('open'); o.classList.add('visible'); loadNotifications(); }
+}
+function closeDrawer() {
+    document.getElementById('notif-drawer').classList.remove('open');
+    document.getElementById('drawer-overlay').classList.remove('visible');
+}
+
+// ======================== TOAST ========================
+function showToast(msg, type = '') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast visible ' + type;
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.className = 'toast'; }, 2500);
+}
+
+// ======================== HELPERS ========================
+function esc(str) { const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
+
+function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+}
+
+function handleKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+}
+
+// ======================== CHAT ========================
+function addMessage(role, content, files, audioUrl) {
+    const div = document.createElement('div');
+    div.className = 'message ' + role;
+    if (role === 'assistant') {
+        div.innerHTML = DOMPurify.sanitize(marked.parse(content));
+    } else {
+        div.textContent = content;
     }
-
-    function hideCommandForm() {
-        document.getElementById('command-form-container').innerHTML = '';
+    if (files && files.length > 0) {
+        files.forEach(f => {
+            const a = document.createElement('a');
+            a.href = '/api/files/' + f.id;
+            a.className = 'file-link';
+            a.textContent = '\u{1F4CE} ' + f.filename;
+            a.download = f.filename;
+            div.appendChild(a);
+        });
     }
-
-    async function saveCommand(editId) {
-        const name = document.getElementById('cmd-name').value.trim();
-        const description = document.getElementById('cmd-desc').value.trim();
-        const prompt_template = document.getElementById('cmd-template').value.trim();
-
-        if (!name || !prompt_template) {
-            alert('Name and prompt template are required.');
-            return;
-        }
-
-        try {
-            const url = editId ? `/api/commands/${editId}` : '/api/commands';
-            const method = editId ? 'PUT' : 'POST';
-            const res = await fetch(url, {
-                method,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, description, prompt_template }),
-            });
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                alert(err.detail || 'Failed to save command');
-                return;
-            }
-            hideCommandForm();
-            loadCommands();
-        } catch (e) {
-            console.error('Failed to save command:', e);
-        }
+    if (audioUrl) {
+        const ac = document.createElement('div');
+        ac.className = 'tts-audio';
+        const audio = document.createElement('audio');
+        audio.controls = true;
+        audio.src = audioUrl;
+        audio.preload = 'metadata';
+        ac.appendChild(audio);
+        div.appendChild(ac);
     }
+    msgContainer.appendChild(div);
+    scrollToBottom();
+}
 
-    async function editCommand(id) {
-        try {
-            const res = await fetch('/api/commands');
-            const data = await res.json();
-            const cmd = data.commands.find(c => c.id === id);
-            if (cmd) showCommandForm(cmd);
-        } catch (e) {
-            console.error('Failed to load command for edit:', e);
-        }
+function scrollToBottom() { msgContainer.scrollTop = msgContainer.scrollHeight; }
+
+function setLoading(on) {
+    sendBtn.disabled = on;
+    msgInput.disabled = on;
+    typingEl.classList.toggle('visible', on);
+    if (on) scrollToBottom();
+}
+
+async function send() {
+    const text = msgInput.value.trim();
+    if (!text) return;
+    addMessage('user', text);
+    msgInput.value = '';
+    msgInput.style.height = 'auto';
+    setLoading(true);
+    try {
+        const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: text }),
+        });
+        if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Request failed'); }
+        const data = await res.json();
+        addMessage('assistant', data.reply, data.files, data.audio_url);
+        refreshSidebar();
+    } catch (e) {
+        addMessage('assistant', 'Error: ' + e.message);
+    } finally {
+        setLoading(false);
+        msgInput.focus();
     }
+}
 
-    async function deleteCommand(id) {
-        if (!confirm('Delete this command?')) return;
-        try {
-            await fetch(`/api/commands/${id}`, { method: 'DELETE' });
-            loadCommands();
-        } catch (e) {
-            console.error('Failed to delete command:', e);
-        }
-    }
+// ======================== FILE UPLOAD ========================
+async function handleFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    await uploadFile(file);
+    event.target.value = '';
+}
 
-    function useCommand(id, name, template) {
-        if (template.includes('{input}')) {
-            messageInput.value = `/${name} `;
-            messageInput.focus();
+async function uploadFile(file) {
+    addMessage('user', '\u{1F4CE} ' + file.name);
+    setLoading(true);
+    try {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch('/api/upload', { method: 'POST', body: fd });
+        if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Upload failed'); }
+        const data = await res.json();
+        addMessage('assistant', data.reply, data.files);
+        refreshSidebar();
+    } catch (e) {
+        addMessage('assistant', 'Error: ' + e.message);
+    } finally { setLoading(false); }
+}
+
+// Drag & drop
+let dragN = 0;
+const dropEl = document.getElementById('drop-overlay');
+document.addEventListener('dragenter', e => { e.preventDefault(); dragN++; dropEl.classList.add('visible'); });
+document.addEventListener('dragleave', e => { e.preventDefault(); dragN--; if (!dragN) dropEl.classList.remove('visible'); });
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => {
+    e.preventDefault(); dragN = 0; dropEl.classList.remove('visible');
+    if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
+});
+
+// ======================== SIDEBAR DATA ========================
+async function refreshSidebar() { loadStats(); loadMemoryMini(); loadFilesMini(); loadPlans(); }
+
+async function loadStats() {
+    try {
+        const r = await fetch('/api/stats');
+        const d = await r.json();
+        document.getElementById('stat-msgs').textContent = d.user_messages ?? '-';
+        document.getElementById('stat-replies').textContent = d.assistant_messages ?? '-';
+        document.getElementById('stat-facts').textContent = d.facts_stored ?? '-';
+        document.getElementById('stat-reminders').textContent = d.active_reminders ?? '-';
+        const sec = document.getElementById('tool-usage-section');
+        const list = document.getElementById('tool-usage-list');
+        if (d.tool_calls && d.tool_calls.length > 0) {
+            sec.style.display = '';
+            list.innerHTML = d.tool_calls.map(t =>
+                '<div class="mini-fact"><span class="mf-cat" style="color:var(--text-dim)">' + esc(t.tool_name) + '</span><span class="mf-text">' + t.cnt + ' calls</span></div>'
+            ).join('');
+        } else { sec.style.display = 'none'; }
+    } catch (e) { console.error(e); }
+}
+
+async function loadMemoryMini() {
+    try {
+        const r = await fetch('/api/memory');
+        const d = await r.json();
+        const facts = d.facts || [];
+        document.getElementById('memory-count').textContent = facts.length;
+        const el = document.getElementById('memory-mini');
+        if (!facts.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">No facts stored yet</div>'; return; }
+        el.innerHTML = facts.slice(0, 8).map(f =>
+            '<div class="mini-fact"><span class="mf-cat">' + esc(f.category) + '</span><span class="mf-text">' + esc(f.key) + ': ' + esc(f.value) + '</span></div>'
+        ).join('');
+        if (facts.length > 8) el.innerHTML += '<div style="font-size:11px;color:var(--text-muted);padding:4px 0">+' + (facts.length - 8) + ' more</div>';
+    } catch (e) { console.error(e); }
+}
+
+async function loadFilesMini() {
+    try {
+        const r = await fetch('/api/files');
+        const d = await r.json();
+        const files = d.files || [];
+        document.getElementById('files-count').textContent = files.length;
+        const el = document.getElementById('files-mini');
+        if (!files.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">No files yet</div>'; return; }
+        el.innerHTML = files.slice(0, 5).map(f =>
+            '<div class="mini-file"><a href="/api/files/' + f.id + '" download>' + esc(f.filename) + '</a><span class="mf-date">' + (f.created_at ? f.created_at.slice(0, 10) : '') + '</span></div>'
+        ).join('');
+    } catch (e) { console.error(e); }
+}
+
+async function loadPlans() {
+    try {
+        const r = await fetch('/api/plans');
+        const d = await r.json();
+        const bar = document.getElementById('plan-bar');
+        if (!d.plans || !d.plans.length) { bar.style.display = 'none'; return; }
+        bar.style.display = '';
+        bar.innerHTML = d.plans.map(p => {
+            const done = p.steps.filter(s => s.status === 'completed').length;
+            const total = p.steps.length;
+            const pct = total ? Math.round(done / total * 100) : 0;
+            return '<div class="plan-card-mini"><div class="plan-title">' + esc(p.title) + '</div><div class="plan-progress"><div class="plan-progress-bar" style="width:' + pct + '%"></div></div><div class="plan-progress-text">' + done + '/' + total + ' steps</div></div>';
+        }).join('');
+    } catch (e) { console.error(e); }
+}
+
+// ======================== HISTORY ========================
+async function loadHistory() {
+    try {
+        const r = await fetch('/api/history?limit=50');
+        const d = await r.json();
+        if (d.messages && d.messages.length > 0) {
+            d.messages.forEach(m => addMessage(m.role, m.content));
         } else {
-            messageInput.value = `/${name}`;
-            sendMessage();
+            msgContainer.innerHTML = '<div class="empty-state"><div class="icon">\u{1F4AC}</div><p>Send a message to start chatting with Kova</p></div>';
         }
+    } catch (e) { console.error(e); }
+}
+
+// ======================== TOOLS PAGE ========================
+async function loadBuiltinTools() {
+    try {
+        const r = await fetch('/api/tools');
+        const d = await r.json();
+        const grid = document.getElementById('builtin-tools-grid');
+        const tools = d.tools || [];
+        const enabled = tools.filter(t => t.enabled).length;
+        document.getElementById('builtin-count').textContent = enabled + '/' + tools.length + ' enabled';
+        grid.innerHTML = tools.map(t => {
+            const dis = !t.enabled ? ' disabled' : '';
+            const chk = t.enabled ? ' checked' : '';
+            const desc = t.description_override || t.description;
+            const params = t.parameters.map(p => '<span class="param-badge">' + esc(p) + '</span>').join('');
+            return '<div class="tool-card' + dis + '" data-tool="' + esc(t.name) + '">' +
+                '<div class="tool-card-header">' +
+                    '<label class="toggle"><input type="checkbox"' + chk + ' onchange="toggleBuiltinTool(\'' + esc(t.name) + '\', this.checked)"><span class="toggle-slider"></span></label>' +
+                    '<span class="tool-name">' + esc(t.name) + '</span>' +
+                    '<button class="btn-xs" onclick="toggleToolEdit(\'' + esc(t.name) + '\')">Edit</button>' +
+                '</div>' +
+                '<div class="tool-desc">' + esc(desc) + '</div>' +
+                (params ? '<div class="tool-params">' + params + '</div>' : '') +
+                '<div class="tool-edit-area" id="edit-' + esc(t.name) + '">' +
+                    '<textarea class="tool-desc-input" data-tool="' + esc(t.name) + '" data-default="' + esc(t.description) + '">' + esc(desc) + '</textarea>' +
+                    '<div class="tool-edit-actions">' +
+                        '<button class="btn btn-primary btn-sm" onclick="saveToolDesc(\'' + esc(t.name) + '\')">Save</button>' +
+                        '<button class="btn btn-secondary btn-sm" onclick="resetToolDesc(\'' + esc(t.name) + '\')">Reset</button>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+        }).join('');
+    } catch (e) { console.error(e); }
+}
+
+function toggleToolEdit(name) {
+    const el = document.getElementById('edit-' + name);
+    el.classList.toggle('visible');
+}
+
+async function toggleBuiltinTool(name, enabled) {
+    try {
+        await fetch('/api/tools/' + name, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) });
+        loadBuiltinTools();
+    } catch (e) { console.error(e); }
+}
+
+async function saveToolDesc(name) {
+    const ta = document.querySelector('#edit-' + name + ' textarea');
+    const val = ta.value.trim();
+    const def = ta.dataset.default;
+    const override = (val && val !== def) ? val : '';
+    try {
+        await fetch('/api/tools/' + name, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ description_override: override }) });
+        showToast('Tool description saved', 'success');
+        loadBuiltinTools();
+    } catch (e) { console.error(e); }
+}
+
+async function resetToolDesc(name) {
+    try {
+        await fetch('/api/tools/' + name, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reset: true }) });
+        showToast('Reset to default', 'success');
+        loadBuiltinTools();
+    } catch (e) { console.error(e); }
+}
+
+// --- Custom Tools ---
+async function loadCustomTools() {
+    try {
+        const r = await fetch('/api/custom-tools');
+        const d = await r.json();
+        const el = document.getElementById('custom-tools-list');
+        const tools = d.tools || [];
+        if (!tools.length) { el.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No custom tools yet. Create one or import from JSON.</p>'; return; }
+        el.innerHTML = tools.map(t => {
+            const dis = !t.enabled ? ' disabled' : '';
+            const chk = t.enabled ? ' checked' : '';
+            const params = t.parameters.map(p => '<span class="param-badge">' + esc(p.name) + ':' + esc(p.type) + '</span>').join('');
+            return '<div class="custom-tool-card' + dis + '">' +
+                '<div class="custom-tool-header">' +
+                    '<span class="custom-tool-name">' + esc(t.name) + '</span>' +
+                    '<div class="custom-tool-actions">' +
+                        '<label class="toggle"><input type="checkbox"' + chk + ' onchange="toggleCustomTool(' + t.id + ', this.checked)"><span class="toggle-slider"></span></label>' +
+                        '<button class="btn-xs" onclick="editCustomTool(' + t.id + ')">Edit</button>' +
+                        '<button class="btn-xs" onclick="deleteCustomTool(' + t.id + ')">Del</button>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="custom-tool-desc">' + esc(t.description) + '</div>' +
+                (params ? '<div class="tool-params">' + params + '</div>' : '') +
+            '</div>';
+        }).join('');
+    } catch (e) { console.error(e); }
+}
+
+function showCustomToolForm(editData) {
+    const el = document.getElementById('custom-tool-form-area');
+    const isEdit = !!editData;
+    const params = editData ? editData.parameters : [];
+    const paramHtml = params.map((p, i) => paramRowHtml(p)).join('');
+    el.innerHTML = '<div class="form-card">' +
+        '<label>Name (lowercase, underscores)</label>' +
+        '<input type="text" id="ct-name" placeholder="e.g. word_count" value="' + (editData ? esc(editData.name) : '') + '"' + (isEdit ? ' readonly style="opacity:0.6"' : '') + '>' +
+        '<label>Description</label>' +
+        '<input type="text" id="ct-desc" placeholder="What this tool does" value="' + (editData ? esc(editData.description) : '') + '">' +
+        '<label>Parameters</label>' +
+        '<div id="ct-params">' + paramHtml + '</div>' +
+        '<button class="btn-add-param" onclick="addParam()">+ Add Parameter</button>' +
+        '<label>Code (use print() for output; params are variables)</label>' +
+        '<textarea class="code-area" id="ct-code" rows="6" placeholder="# Parameters available as variables\nprint(len(text.split()))">' + (editData ? esc(editData.code_body) : '') + '</textarea>' +
+        '<div style="display:flex;gap:6px;align-items:center;margin-top:8px"><button class="btn btn-secondary btn-sm" onclick="testCustomTool()">Test</button><span style="font-size:11px;color:var(--text-muted)">Runs with sample values</span></div>' +
+        '<div class="test-output" id="ct-test-output"></div>' +
+        '<div class="form-actions">' +
+            '<button class="btn btn-primary btn-sm" onclick="saveCustomTool(' + (editData ? editData.id : 'null') + ')">' + (isEdit ? 'Update' : 'Create') + '</button>' +
+            '<button class="btn btn-secondary btn-sm" onclick="hideCustomToolForm()">Cancel</button>' +
+        '</div>' +
+    '</div>';
+}
+
+function paramRowHtml(data) {
+    const n = data ? data.name : '';
+    const t = data ? data.type : 'string';
+    const d = data ? data.description : '';
+    const r = data && data.required ? ' checked' : '';
+    return '<div class="param-row">' +
+        '<input type="text" placeholder="name" class="ct-pn" value="' + esc(n) + '">' +
+        '<select class="ct-pt"><option value="string"' + (t==='string'?' selected':'') + '>string</option><option value="integer"' + (t==='integer'?' selected':'') + '>integer</option><option value="number"' + (t==='number'?' selected':'') + '>number</option><option value="boolean"' + (t==='boolean'?' selected':'') + '>boolean</option></select>' +
+        '<input type="text" placeholder="description" class="ct-pd" value="' + esc(d) + '">' +
+        '<label class="param-req-label"><input type="checkbox" class="ct-pr"' + r + '> Req</label>' +
+        '<button class="btn-remove-param" onclick="this.parentElement.remove()">&times;</button>' +
+    '</div>';
+}
+
+function addParam() {
+    const c = document.getElementById('ct-params');
+    const d = document.createElement('div');
+    d.innerHTML = paramRowHtml(null);
+    c.appendChild(d.firstElementChild);
+}
+
+function getFormParams() {
+    const rows = document.querySelectorAll('#ct-params .param-row');
+    const out = [];
+    rows.forEach(r => {
+        const name = r.querySelector('.ct-pn').value.trim();
+        if (!name) return;
+        out.push({ name, type: r.querySelector('.ct-pt').value, description: r.querySelector('.ct-pd').value.trim(), required: r.querySelector('.ct-pr').checked });
+    });
+    return out;
+}
+
+function hideCustomToolForm() { document.getElementById('custom-tool-form-area').innerHTML = ''; }
+
+async function testCustomTool() {
+    const code = document.getElementById('ct-code').value.trim();
+    const params = getFormParams();
+    if (!code) { showToast('Enter code to test', 'error'); return; }
+    const sample = {};
+    params.forEach(p => {
+        if (p.type === 'integer') sample[p.name] = 0;
+        else if (p.type === 'number') sample[p.name] = 0.0;
+        else if (p.type === 'boolean') sample[p.name] = true;
+        else sample[p.name] = 'sample text';
+    });
+    const out = document.getElementById('ct-test-output');
+    out.textContent = 'Running...';
+    out.classList.add('visible');
+    try {
+        const r = await fetch('/api/custom-tools/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code_body: code, params: sample }) });
+        const d = await r.json();
+        out.textContent = r.ok ? d.output : 'Error: ' + (d.detail || 'Test failed');
+    } catch (e) { out.textContent = 'Error: ' + e.message; }
+}
+
+async function saveCustomTool(editId) {
+    const name = document.getElementById('ct-name').value.trim().toLowerCase();
+    const description = document.getElementById('ct-desc').value.trim();
+    const code_body = document.getElementById('ct-code').value.trim();
+    const parameters = getFormParams();
+    if (!name || !description || !code_body) { showToast('Name, description, and code required', 'error'); return; }
+    try {
+        const url = editId ? '/api/custom-tools/' + editId : '/api/custom-tools';
+        const method = editId ? 'PUT' : 'POST';
+        const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, description, parameters, code_body }) });
+        if (!r.ok) { const e = await r.json().catch(() => ({})); showToast(e.detail || 'Save failed', 'error'); return; }
+        hideCustomToolForm();
+        loadCustomTools();
+        showToast('Tool saved', 'success');
+    } catch (e) { console.error(e); }
+}
+
+async function editCustomTool(id) {
+    try {
+        const r = await fetch('/api/custom-tools');
+        const d = await r.json();
+        const t = d.tools.find(x => x.id === id);
+        if (t) showCustomToolForm(t);
+    } catch (e) { console.error(e); }
+}
+
+async function toggleCustomTool(id, enabled) {
+    try {
+        await fetch('/api/custom-tools/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) });
+        loadCustomTools();
+    } catch (e) { console.error(e); }
+}
+
+async function deleteCustomTool(id) {
+    if (!confirm('Delete this custom tool?')) return;
+    try { await fetch('/api/custom-tools/' + id, { method: 'DELETE' }); loadCustomTools(); showToast('Tool deleted'); } catch (e) { console.error(e); }
+}
+
+// --- Import ---
+function showImportForm() {
+    const el = document.getElementById('import-form-area');
+    el.innerHTML = '<div class="form-card">' +
+        '<label>Paste tool JSON (object or array)</label>' +
+        '<textarea class="code-area" id="import-json" rows="5" placeholder=\'{"name":"word_count","description":"Count words","parameters":[{"name":"text","type":"string","required":true}],"code_body":"print(len(text.split()))"}\' ></textarea>' +
+        '<div class="import-divider">&mdash; or &mdash;</div>' +
+        '<label>Fetch from URL</label>' +
+        '<input type="text" id="import-url" placeholder="https://example.com/tools.json">' +
+        '<div class="import-result" id="import-result"></div>' +
+        '<div class="form-actions">' +
+            '<button class="btn btn-primary btn-sm" onclick="submitImport()">Import</button>' +
+            '<button class="btn btn-secondary btn-sm" onclick="hideImportForm()">Cancel</button>' +
+        '</div>' +
+    '</div>';
+}
+
+function hideImportForm() { document.getElementById('import-form-area').innerHTML = ''; }
+
+async function submitImport() {
+    const json = document.getElementById('import-json').value.trim();
+    const url = document.getElementById('import-url').value.trim();
+    const res = document.getElementById('import-result');
+    if (!json && !url) { res.className = 'import-result error visible'; res.textContent = 'Paste JSON or enter URL'; return; }
+    const body = json ? { json } : { url };
+    res.className = 'import-result visible'; res.textContent = 'Importing...';
+    try {
+        const r = await fetch('/api/custom-tools/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const d = await r.json();
+        if (!r.ok) { res.className = 'import-result error visible'; res.textContent = d.detail || 'Import failed'; return; }
+        let msg = 'Imported: ' + d.imported.join(', ');
+        if (d.errors && d.errors.length) msg += '\nErrors: ' + d.errors.join('; ');
+        res.className = 'import-result success visible'; res.textContent = msg;
+        loadCustomTools();
+    } catch (e) { res.className = 'import-result error visible'; res.textContent = 'Error: ' + e.message; }
+}
+
+// --- Commands ---
+async function loadCommands() {
+    try {
+        const r = await fetch('/api/commands');
+        const d = await r.json();
+        const el = document.getElementById('commands-list');
+        const cmds = d.commands || [];
+        if (!cmds.length) { el.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No custom commands yet.</p>'; return; }
+        el.innerHTML = cmds.map(c =>
+            '<div class="cmd-card">' +
+                '<div class="cmd-card-header">' +
+                    '<span class="cmd-name">/' + esc(c.name) + '</span>' +
+                    '<div class="cmd-actions">' +
+                        '<button class="btn-xs" onclick="useCommand(\'' + esc(c.name) + '\',\'' + esc(c.prompt_template).replace(/'/g, "\\'") + '\')">Use</button>' +
+                        '<button class="btn-xs" onclick="editCommand(' + c.id + ')">Edit</button>' +
+                        '<button class="btn-xs" onclick="deleteCommand(' + c.id + ')">Del</button>' +
+                    '</div>' +
+                '</div>' +
+                (c.description ? '<div class="cmd-desc">' + esc(c.description) + '</div>' : '') +
+                '<div class="cmd-template">' + esc(c.prompt_template) + '</div>' +
+            '</div>'
+        ).join('');
+    } catch (e) { console.error(e); }
+}
+
+function showCommandForm(editData) {
+    const el = document.getElementById('command-form-area');
+    const isEdit = !!editData;
+    el.innerHTML = '<div class="form-card">' +
+        '<label>Name (no spaces)</label>' +
+        '<input type="text" id="cmd-name" placeholder="e.g. summarize" value="' + (editData ? esc(editData.name) : '') + '">' +
+        '<label>Description</label>' +
+        '<input type="text" id="cmd-desc" placeholder="What this command does" value="' + (editData ? esc(editData.description) : '') + '">' +
+        '<label>Prompt Template (use {input} for user input)</label>' +
+        '<textarea id="cmd-template" rows="3" placeholder="Summarize this: {input}">' + (editData ? esc(editData.prompt_template) : '') + '</textarea>' +
+        '<div class="form-actions">' +
+            '<button class="btn btn-primary btn-sm" onclick="saveCommand(' + (editData ? editData.id : 'null') + ')">' + (isEdit ? 'Update' : 'Create') + '</button>' +
+            '<button class="btn btn-secondary btn-sm" onclick="hideCommandForm()">Cancel</button>' +
+        '</div>' +
+    '</div>';
+}
+
+function hideCommandForm() { document.getElementById('command-form-area').innerHTML = ''; }
+
+async function saveCommand(editId) {
+    const name = document.getElementById('cmd-name').value.trim();
+    const description = document.getElementById('cmd-desc').value.trim();
+    const prompt_template = document.getElementById('cmd-template').value.trim();
+    if (!name || !prompt_template) { showToast('Name and template required', 'error'); return; }
+    try {
+        const url = editId ? '/api/commands/' + editId : '/api/commands';
+        const method = editId ? 'PUT' : 'POST';
+        const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, description, prompt_template }) });
+        if (!r.ok) { const e = await r.json().catch(() => ({})); showToast(e.detail || 'Save failed', 'error'); return; }
+        hideCommandForm();
+        loadCommands();
+        showToast('Command saved', 'success');
+    } catch (e) { console.error(e); }
+}
+
+async function editCommand(id) {
+    try {
+        const r = await fetch('/api/commands');
+        const d = await r.json();
+        const c = d.commands.find(x => x.id === id);
+        if (c) showCommandForm(c);
+    } catch (e) { console.error(e); }
+}
+
+async function deleteCommand(id) {
+    if (!confirm('Delete this command?')) return;
+    try { await fetch('/api/commands/' + id, { method: 'DELETE' }); loadCommands(); showToast('Command deleted'); } catch (e) { console.error(e); }
+}
+
+function useCommand(name, template) {
+    switchPage(document.querySelector('[data-page="chat"]'));
+    if (template.includes('{input}')) { msgInput.value = '/' + name + ' '; msgInput.focus(); }
+    else { msgInput.value = '/' + name; send(); }
+}
+
+// ======================== SETTINGS ========================
+async function loadSettings() {
+    try {
+        const r = await fetch('/api/settings');
+        const s = await r.json();
+        document.getElementById('set-system-prompt').value = s.system_prompt || '';
+        document.getElementById('set-timezone').value = s.user_timezone || 'UTC';
+        document.getElementById('set-max-rounds').value = s.max_tool_rounds || '10';
+        document.getElementById('set-tts-enabled').checked = s.tts_enabled === 'true';
+        document.getElementById('set-tts-voice').value = s.tts_voice || 'nova';
+        document.getElementById('set-tts-model').value = s.tts_model || 'tts-1';
+        document.getElementById('set-briefing-enabled').checked = s.briefing_enabled === 'true';
+        document.getElementById('set-briefing-time').value = s.briefing_time || '08:00';
+        document.getElementById('set-followup-enabled').checked = s.follow_up_enabled === 'true';
+    } catch (e) { console.error(e); }
+}
+
+async function saveSettings(section) {
+    let data = {};
+    if (section === 'general') {
+        data = {
+            system_prompt: document.getElementById('set-system-prompt').value,
+            user_timezone: document.getElementById('set-timezone').value,
+            max_tool_rounds: document.getElementById('set-max-rounds').value,
+        };
+    } else if (section === 'voice') {
+        data = {
+            tts_enabled: document.getElementById('set-tts-enabled').checked ? 'true' : 'false',
+            tts_voice: document.getElementById('set-tts-voice').value,
+            tts_model: document.getElementById('set-tts-model').value,
+        };
+    } else if (section === 'proactive') {
+        data = {
+            briefing_enabled: document.getElementById('set-briefing-enabled').checked ? 'true' : 'false',
+            briefing_time: document.getElementById('set-briefing-time').value,
+            follow_up_enabled: document.getElementById('set-followup-enabled').checked ? 'true' : 'false',
+        };
     }
+    try {
+        const r = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+        if (r.ok) {
+            showToast('Settings saved', 'success');
+            const status = document.getElementById('save-status-' + section);
+            if (status) { status.classList.add('visible'); setTimeout(() => status.classList.remove('visible'), 2000); }
+        } else { showToast('Failed to save settings', 'error'); }
+    } catch (e) { showToast('Error: ' + e.message, 'error'); }
+}
 
-    // --- Notifications (Phase 4) ---
+// ======================== INTEGRATIONS ========================
+async function loadIntegrations() {
+    try {
+        const r = await fetch('/api/integrations');
+        const d = await r.json();
+        const el = document.getElementById('integrations-list');
+        const ig = d.integrations || {};
+        let html = '';
 
-    async function loadNotifications() {
-        try {
-            const res = await fetch('/api/notifications');
-            const data = await res.json();
-            const list = document.getElementById('notifications-list');
-            const badge = document.getElementById('notif-badge');
+        // Google
+        const g = ig.google || {};
+        html += '<div class="integration-card"><div class="integration-header"><div class="integration-info"><div class="integration-icon google">G</div><div><div class="integration-name">Google</div><div class="integration-desc">Calendar & Gmail</div></div></div>' +
+            '<span class="status-pill ' + (g.connected ? 'connected' : g.configured ? 'configured' : 'off') + '">' + (g.connected ? 'Connected' : g.configured ? 'Ready' : 'Not Configured') + '</span></div>';
+        if (g.configured && !g.connected) html += '<div class="integration-body"><a href="/api/oauth/google" class="btn btn-primary btn-sm">Connect Google Account</a></div>';
+        if (g.connected) html += '<div class="integration-body"><button class="btn btn-danger btn-sm" onclick="disconnectGoogle()">Disconnect</button></div>';
+        if (!g.configured) html += '<div class="integration-hint">Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI environment variables to enable</div>';
+        html += '</div>';
 
-            // Update badge
-            if (data.unread_count > 0) {
-                badge.textContent = data.unread_count;
-                badge.style.display = 'inline-block';
-            } else {
-                badge.style.display = 'none';
-            }
+        // GitHub
+        const gh = ig.github || {};
+        html += '<div class="integration-card"><div class="integration-header"><div class="integration-info"><div class="integration-icon github">GH</div><div><div class="integration-name">GitHub</div><div class="integration-desc">Repos, Issues, Pull Requests</div></div></div>' +
+            '<span class="status-pill ' + (gh.connected ? 'connected' : 'off') + '">' + (gh.connected ? 'Connected' : 'Not Configured') + '</span></div>';
+        if (!gh.configured) html += '<div class="integration-hint">Set GITHUB_TOKEN environment variable to enable</div>';
+        html += '</div>';
 
-            if (!data.notifications || data.notifications.length === 0) {
-                list.innerHTML = '<p style="color:var(--text-dim);font-size:0.85rem;">No notifications yet.</p>';
-                return;
-            }
-            list.innerHTML = data.notifications.map(n => {
-                const unreadClass = n.read ? '' : ' unread';
-                const typeIcon = {
-                    'briefing': '\u2600\uFE0F',
-                    'reminder': '\u23F0',
-                    'follow_up': '\u{1F4AC}',
-                }[n.type] || '\u{1F514}';
-                return `<div class="notif-card${unreadClass}" onclick="markNotifRead(${n.id}, this)">
-                    <div class="notif-header">
-                        <span class="notif-type">${typeIcon} ${escHtml(n.type)}</span>
-                        <span class="notif-time">${n.created_at ? n.created_at.slice(0, 16) : ''}</span>
-                    </div>
-                    <div class="notif-title">${escHtml(n.title)}</div>
-                    ${n.body ? '<div class="notif-body">' + escHtml(n.body).slice(0, 200) + '</div>' : ''}
-                </div>`;
-            }).join('');
-        } catch (e) {
-            console.error('Failed to load notifications:', e);
-        }
-    }
+        // Home Assistant
+        const ha = ig.homeassistant || {};
+        html += '<div class="integration-card"><div class="integration-header"><div class="integration-info"><div class="integration-icon ha">HA</div><div><div class="integration-name">Home Assistant</div><div class="integration-desc">Smart Home Control</div></div></div>' +
+            '<span class="status-pill ' + (ha.connected ? 'connected' : 'off') + '">' + (ha.connected ? 'Connected' : 'Not Configured') + '</span></div>';
+        if (!ha.configured) html += '<div class="integration-hint">Set HA_URL and HA_TOKEN environment variables to enable</div>';
+        html += '</div>';
 
-    async function markNotifRead(id, el) {
-        try {
-            await fetch(`/api/notifications/${id}/read`, { method: 'POST' });
-            el.classList.remove('unread');
-            loadNotifications();
-        } catch (e) {
-            console.error('Failed to mark notification read:', e);
-        }
-    }
+        // Webhooks
+        html += '<div class="integration-card"><div class="integration-header"><div class="integration-info"><div class="integration-icon webhook">WH</div><div><div class="integration-name">Webhooks</div><div class="integration-desc">Receive events from external services</div></div></div>' +
+            '<span class="status-pill connected">Active</span></div>' +
+            '<div class="integration-body"><div class="integration-hint" style="color:var(--text-dim)">Webhook URL: <code style="background:var(--surface-3);padding:2px 6px;border-radius:4px;font-size:12px">' + window.location.origin + '/api/webhook/{channel}</code></div></div></div>';
 
-    // --- Integrations (Phase 3) ---
+        el.innerHTML = html;
+    } catch (e) { console.error(e); }
+}
 
-    async function loadIntegrations() {
-        try {
-            const res = await fetch('/api/integrations');
-            const data = await res.json();
-            const list = document.getElementById('integrations-list');
-            const integrations = data.integrations || {};
+async function disconnectGoogle() {
+    if (!confirm('Disconnect Google account?')) return;
+    try { await fetch('/api/oauth/google', { method: 'DELETE' }); loadIntegrations(); showToast('Google disconnected'); } catch (e) { console.error(e); }
+}
 
-            let html = '';
+// ======================== DATA MANAGEMENT ========================
+async function loadDataMemory() {
+    try {
+        const r = await fetch('/api/memory');
+        const d = await r.json();
+        const el = document.getElementById('data-memory-list');
+        const facts = d.facts || [];
+        if (!facts.length) { el.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No facts stored yet.</p>'; return; }
+        el.innerHTML = facts.map(f =>
+            '<div class="data-fact">' +
+                '<span class="df-cat">' + esc(f.category) + '</span>' +
+                '<span class="df-key">' + esc(f.key) + '</span>' +
+                '<span class="df-value">' + esc(f.value) + '</span>' +
+                '<button class="df-del" onclick="deleteFact(\'' + esc(f.category).replace(/'/g, "\\'") + '\',\'' + esc(f.key).replace(/'/g, "\\'") + '\')" title="Delete">&times;</button>' +
+            '</div>'
+        ).join('');
+    } catch (e) { console.error(e); }
+}
 
-            // Google
-            const g = integrations.google || {};
-            html += `<div class="integration-card">
-                <div class="integration-header">
-                    <span class="integration-name">Google (Calendar + Gmail)</span>
-                    <span class="status-badge ${g.connected ? 'connected' : g.configured ? 'configured' : 'off'}">${g.connected ? 'Connected' : g.configured ? 'Not Connected' : 'Not Configured'}</span>
-                </div>
-                ${g.configured && !g.connected ? '<a href="/api/oauth/google" class="btn-sm" style="display:inline-block;margin-top:6px;">Connect Google</a>' : ''}
-                ${g.connected ? '<button class="btn-sm danger" style="margin-top:6px;" onclick="disconnectGoogle()">Disconnect</button>' : ''}
-            </div>`;
+async function deleteFact(category, key) {
+    try {
+        await fetch('/api/memory/' + encodeURIComponent(category) + '/' + encodeURIComponent(key), { method: 'DELETE' });
+        loadDataMemory();
+        loadMemoryMini();
+        showToast('Fact deleted');
+    } catch (e) { console.error(e); }
+}
 
-            // GitHub
-            const gh = integrations.github || {};
-            html += `<div class="integration-card">
-                <div class="integration-header">
-                    <span class="integration-name">GitHub</span>
-                    <span class="status-badge ${gh.connected ? 'connected' : 'off'}">${gh.connected ? 'Connected' : 'Not Configured'}</span>
-                </div>
-                ${!gh.configured ? '<div class="integration-hint">Set GITHUB_TOKEN env var to enable</div>' : ''}
-            </div>`;
+async function clearAllMemory() {
+    if (!confirm('This will permanently delete ALL stored facts. Are you sure?')) return;
+    try {
+        await fetch('/api/memory/clear', { method: 'POST' });
+        loadDataMemory();
+        loadMemoryMini();
+        showToast('All memory cleared');
+    } catch (e) { console.error(e); }
+}
 
-            // Home Assistant
-            const ha = integrations.homeassistant || {};
-            html += `<div class="integration-card">
-                <div class="integration-header">
-                    <span class="integration-name">Home Assistant</span>
-                    <span class="status-badge ${ha.connected ? 'connected' : 'off'}">${ha.connected ? 'Connected' : 'Not Configured'}</span>
-                </div>
-                ${!ha.configured ? '<div class="integration-hint">Set HA_URL + HA_TOKEN env vars to enable</div>' : ''}
-            </div>`;
+// ======================== NOTIFICATIONS ========================
+async function loadNotifications() {
+    try {
+        const r = await fetch('/api/notifications');
+        const d = await r.json();
+        const badge = document.getElementById('notif-badge');
+        if (d.unread_count > 0) { badge.textContent = d.unread_count; badge.classList.add('visible'); }
+        else { badge.classList.remove('visible'); }
 
-            list.innerHTML = html;
-        } catch (e) {
-            console.error('Failed to load integrations:', e);
-        }
-    }
+        const el = document.getElementById('notif-list');
+        const notifs = d.notifications || [];
+        if (!notifs.length) { el.innerHTML = '<p style="color:var(--text-muted);font-size:13px;padding:20px;text-align:center">No notifications yet</p>'; return; }
+        const typeIcons = { briefing: '\u2600\uFE0F', reminder: '\u23F0', follow_up: '\u{1F4AC}' };
+        el.innerHTML = notifs.map(n => {
+            const icon = typeIcons[n.type] || '\u{1F514}';
+            return '<div class="notif-card' + (n.read ? '' : ' unread') + '" onclick="markNotifRead(' + n.id + ', this)">' +
+                '<div class="notif-header"><span class="notif-type">' + icon + ' ' + esc(n.type) + '</span><span class="notif-time">' + (n.created_at ? n.created_at.slice(0, 16) : '') + '</span></div>' +
+                '<div class="notif-title">' + esc(n.title) + '</div>' +
+                (n.body ? '<div class="notif-body">' + esc(n.body).slice(0, 200) + '</div>' : '') +
+            '</div>';
+        }).join('');
+    } catch (e) { console.error(e); }
+}
 
-    async function disconnectGoogle() {
-        if (!confirm('Disconnect Google account?')) return;
-        try {
-            await fetch('/api/oauth/google', { method: 'DELETE' });
-            loadIntegrations();
-        } catch (e) {
-            console.error('Failed to disconnect Google:', e);
-        }
-    }
+async function markNotifRead(id, el) {
+    try {
+        await fetch('/api/notifications/' + id + '/read', { method: 'POST' });
+        el.classList.remove('unread');
+        loadNotifications();
+    } catch (e) { console.error(e); }
+}
 
-    // --- Plans (Phase 6) ---
+// ======================== INIT ========================
+loadHistory();
+refreshSidebar();
+loadNotifications();
 
-    async function loadPlans() {
-        try {
-            const res = await fetch('/api/plans');
-            const data = await res.json();
-            const display = document.getElementById('plan-display');
-
-            if (!data.plans || data.plans.length === 0) {
-                display.style.display = 'none';
-                return;
-            }
-
-            display.style.display = 'block';
-            display.innerHTML = data.plans.map(p => {
-                const completed = p.steps.filter(s => s.status === 'completed').length;
-                const total = p.steps.length;
-                const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-                const stepsHtml = p.steps.map(s => {
-                    const icon = {'pending':'\u25CB','in_progress':'\u25D4','completed':'\u25CF','failed':'\u2716'}[s.status] || '\u25CB';
-                    return `<div class="plan-step ${s.status}"><span class="plan-step-icon">${icon}</span> ${escHtml(s.description)}</div>`;
-                }).join('');
-                return `<div class="plan-card">
-                    <div class="plan-title">${escHtml(p.title)}</div>
-                    <div class="plan-progress"><div class="plan-progress-bar" style="width:${pct}%"></div></div>
-                    <div class="plan-progress-text">${completed}/${total} steps</div>
-                    <div class="plan-steps">${stepsHtml}</div>
-                </div>`;
-            }).join('');
-        } catch (e) {
-            console.error('Failed to load plans:', e);
-        }
-    }
-
-    // Init
-    loadHistory();
-    refreshSidebar();
-
-    // Auto-refresh sidebar every 15s
-    setInterval(refreshSidebar, 15000);
+// Auto-refresh
+setInterval(() => { refreshSidebar(); loadNotifications(); }, 15000);
 </script>
-
 </body>
 </html>
