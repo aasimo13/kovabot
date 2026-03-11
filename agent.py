@@ -64,6 +64,7 @@ TOOL_STATUS_LABELS = {
     "request_confirmation": "Requesting confirmation",
     "check_confirmation": "Checking confirmation",
     "get_agent_context": "Inspecting context",
+    "run_command": "Running command",
 }
 
 

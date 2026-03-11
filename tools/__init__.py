@@ -10,6 +10,7 @@ from tools.semantic_memory import semantic_recall
 from tools.planning import create_plan, update_plan_step, get_plan
 from tools.confirmation import request_confirmation, check_confirmation
 from tools.agent_introspection import get_agent_context
+from tools.cli import run_command
 
 # Maps function name → callable
 TOOL_REGISTRY: dict[str, callable] = {
@@ -31,6 +32,7 @@ TOOL_REGISTRY: dict[str, callable] = {
     "request_confirmation": request_confirmation,
     "check_confirmation": check_confirmation,
     "get_agent_context": get_agent_context,
+    "run_command": run_command,
 }
 
 # Conditionally register GitHub tools
@@ -442,6 +444,24 @@ TOOL_SCHEMAS = [
                 "type": "object",
                 "properties": {},
                 "required": [],
+            },
+        },
+    },
+    # CLI
+    {
+        "type": "function",
+        "function": {
+            "name": "run_command",
+            "description": "Execute a CLI/shell command and return its output. Use for system tasks: curl, wget, git, ls, cat, grep, find, wc, jq, python scripts, pip, node, npm, docker, etc. Destructive commands (rm, sudo, etc.) are blocked.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "The shell command to execute, e.g. 'curl -s https://api.example.com/data | jq .results'",
+                    },
+                },
+                "required": ["command"],
             },
         },
     },
