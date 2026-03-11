@@ -58,6 +58,51 @@ async def _send_reply(update: Update, text: str, status_message=None):
             break
 
 
+async def handle_custom_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle custom commands defined in the database (catch-all for unknown /commands)."""
+    if not is_allowed(update.effective_user.id):
+        await update.message.reply_text("Unauthorized.")
+        return
+
+    text = update.message.text or ""
+    parts = text[1:].split(None, 1)
+    cmd_name = parts[0].lower() if parts else ""
+    cmd_input = parts[1] if len(parts) > 1 else ""
+
+    cmd = db.get_custom_command_by_name(cmd_name)
+    if not cmd:
+        await update.message.reply_text(f"Unknown command: /{cmd_name}\nUse /help to see available commands.")
+        return
+
+    message = cmd["prompt_template"].replace("{input}", cmd_input).strip()
+
+    chat_id = update.effective_chat.id
+    typing_task = asyncio.create_task(_keep_typing(context.bot, chat_id))
+    status_message = None
+
+    async def status_callback(status_text: str):
+        nonlocal status_message
+        try:
+            if status_message:
+                await status_message.edit_text(f"_{status_text}_", parse_mode=ParseMode.MARKDOWN_V2)
+            else:
+                status_message = await update.message.reply_text(
+                    f"_{status_text}_", parse_mode=ParseMode.MARKDOWN_V2
+                )
+        except Exception:
+            pass
+
+    try:
+        reply = await run_agent(chat_id, message, status_callback=status_callback)
+        await _send_reply(update, reply, status_message)
+        await _send_generated_files(chat_id, reply, update)
+    except Exception as e:
+        logger.error(f"Error in handle_custom_command: {e}", exc_info=True)
+        await update.message.reply_text("Something went wrong. Try again.")
+    finally:
+        typing_task.cancel()
+
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update.effective_user.id):
         await update.message.reply_text("Unauthorized.")

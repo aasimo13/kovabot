@@ -1,6 +1,7 @@
 import os
 import logging
 import mimetypes
+import re
 from pathlib import Path
 
 from fastapi import FastAPI, Request, UploadFile, File, Form, HTTPException
@@ -11,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 import db
 from config import WEB_AUTH_TOKEN, WEB_CHAT_ID
 from agent import run_agent
+from tools import TOOL_SCHEMAS
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,15 @@ def create_web_app() -> FastAPI:
         message = body.get("message", "").strip()
         if not message:
             raise HTTPException(status_code=400, detail="Empty message")
+
+        # Resolve custom commands: /name [input]
+        if message.startswith("/"):
+            parts = message[1:].split(None, 1)
+            cmd_name = parts[0].lower() if parts else ""
+            cmd_input = parts[1] if len(parts) > 1 else ""
+            cmd = db.get_custom_command_by_name(cmd_name)
+            if cmd:
+                message = cmd["prompt_template"].replace("{input}", cmd_input).strip()
 
         chat_id = WEB_CHAT_ID
         if not chat_id:
@@ -230,5 +241,116 @@ def create_web_app() -> FastAPI:
             filename=file_record["filename"],
             media_type=file_record["mime_type"] or "application/octet-stream",
         )
+
+    # --- Tool management endpoints ---
+
+    @app.get("/api/tools")
+    async def api_tools(request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        overrides = db.get_tool_overrides()
+        tools = []
+        for schema in TOOL_SCHEMAS:
+            fn = schema["function"]
+            name = fn["name"]
+            override = overrides.get(name, {})
+            params = list(fn.get("parameters", {}).get("properties", {}).keys())
+            tools.append({
+                "name": name,
+                "description": fn["description"],
+                "description_override": override.get("description_override"),
+                "enabled": override.get("enabled", True),
+                "parameters": params,
+            })
+        return JSONResponse({"tools": tools})
+
+    @app.put("/api/tools/{name}")
+    async def api_update_tool(name: str, request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        # Validate tool exists
+        valid_names = {s["function"]["name"] for s in TOOL_SCHEMAS}
+        if name not in valid_names:
+            raise HTTPException(status_code=404, detail="Tool not found")
+
+        body = await request.json()
+        enabled = body.get("enabled")
+        description_override = body.get("description_override")
+
+        # Reset: delete override entirely
+        if body.get("reset"):
+            db.delete_tool_override(name)
+            return JSONResponse({"ok": True})
+
+        db.upsert_tool_override(name, enabled=enabled, description_override=description_override)
+        return JSONResponse({"ok": True})
+
+    # --- Custom command endpoints ---
+
+    @app.get("/api/commands")
+    async def api_commands(request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        commands = db.get_custom_commands()
+        return JSONResponse({"commands": commands})
+
+    @app.post("/api/commands")
+    async def api_create_command(request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        body = await request.json()
+        name = body.get("name", "").strip().lower()
+        description = body.get("description", "").strip()
+        prompt_template = body.get("prompt_template", "").strip()
+
+        if not name or not prompt_template:
+            raise HTTPException(status_code=400, detail="Name and prompt_template are required")
+        if not re.match(r'^[a-z0-9_]{1,32}$', name):
+            raise HTTPException(status_code=400, detail="Name must be 1-32 chars: lowercase letters, numbers, underscores")
+        if name in db.RESERVED_COMMANDS:
+            raise HTTPException(status_code=400, detail=f"'{name}' is a reserved command name")
+        if db.get_custom_command_by_name(name):
+            raise HTTPException(status_code=400, detail=f"Command '{name}' already exists")
+
+        cmd_id = db.create_custom_command(name, description, prompt_template)
+        return JSONResponse({"id": cmd_id, "ok": True})
+
+    @app.put("/api/commands/{command_id}")
+    async def api_update_command(command_id: int, request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        cmd = db.get_custom_command(command_id)
+        if not cmd:
+            raise HTTPException(status_code=404, detail="Command not found")
+
+        body = await request.json()
+        name = body.get("name", "").strip().lower() if "name" in body else None
+        description = body.get("description", "").strip() if "description" in body else None
+        prompt_template = body.get("prompt_template", "").strip() if "prompt_template" in body else None
+
+        if name and not re.match(r'^[a-z0-9_]{1,32}$', name):
+            raise HTTPException(status_code=400, detail="Name must be 1-32 chars: lowercase letters, numbers, underscores")
+        if name and name in db.RESERVED_COMMANDS:
+            raise HTTPException(status_code=400, detail=f"'{name}' is a reserved command name")
+        if name and name != cmd["name"]:
+            existing = db.get_custom_command_by_name(name)
+            if existing:
+                raise HTTPException(status_code=400, detail=f"Command '{name}' already exists")
+
+        db.update_custom_command(command_id, name=name, description=description, prompt_template=prompt_template)
+        return JSONResponse({"ok": True})
+
+    @app.delete("/api/commands/{command_id}")
+    async def api_delete_command(command_id: int, request: Request):
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        if not db.delete_custom_command(command_id):
+            raise HTTPException(status_code=404, detail="Command not found")
+        return JSONResponse({"ok": True})
 
     return app

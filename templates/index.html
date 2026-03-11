@@ -31,6 +31,7 @@
             <button class="sidebar-tab active" data-panel="stats" onclick="switchTab(this)">Stats</button>
             <button class="sidebar-tab" data-panel="memory" onclick="switchTab(this)">Memory</button>
             <button class="sidebar-tab" data-panel="files" onclick="switchTab(this)">Files</button>
+            <button class="sidebar-tab" data-panel="tools" onclick="switchTab(this)">Tools</button>
         </div>
 
         <div class="sidebar-content">
@@ -65,6 +66,21 @@
             <!-- Files panel -->
             <div class="sidebar-panel" id="panel-files">
                 <div id="files-list"></div>
+            </div>
+
+            <!-- Tools panel -->
+            <div class="sidebar-panel" id="panel-tools">
+                <div class="section-header">
+                    <h3>Built-in Tools</h3>
+                </div>
+                <div id="tools-list"></div>
+
+                <div class="section-header">
+                    <h3>Custom Commands</h3>
+                    <button class="btn-sm" onclick="showCommandForm()">+ Add</button>
+                </div>
+                <div id="command-form-container"></div>
+                <div id="commands-list"></div>
             </div>
         </div>
     </aside>
@@ -266,6 +282,8 @@
         loadStats();
         loadMemory();
         loadFiles();
+        loadTools();
+        loadCommands();
     }
 
     async function loadStats() {
@@ -347,6 +365,204 @@
             }
         } catch (e) {
             console.error('Failed to load history:', e);
+        }
+    }
+
+    // --- Tools ---
+
+    async function loadTools() {
+        try {
+            const res = await fetch('/api/tools');
+            const data = await res.json();
+            const list = document.getElementById('tools-list');
+            if (!data.tools || data.tools.length === 0) {
+                list.innerHTML = '<p style="color:var(--text-dim);font-size:0.85rem;">No tools available.</p>';
+                return;
+            }
+            list.innerHTML = data.tools.map(t => {
+                const disabled = !t.enabled ? ' disabled' : '';
+                const checked = t.enabled ? ' checked' : '';
+                const desc = t.description_override || t.description;
+                const isOverridden = !!t.description_override;
+                const params = t.parameters.map(p => `<span class="param-badge">${escHtml(p)}</span>`).join('');
+                return `<div class="tool-card${disabled}">
+                    <div class="tool-card-header">
+                        <label class="toggle-switch">
+                            <input type="checkbox"${checked} onchange="toggleTool('${escHtml(t.name)}', this.checked)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="tool-name">${escHtml(t.name)}</span>
+                    </div>
+                    <textarea class="tool-desc-area" rows="2"
+                        data-tool="${escHtml(t.name)}"
+                        data-default="${escHtml(t.description)}"
+                        onblur="saveToolDesc(this)">${escHtml(desc)}</textarea>
+                    ${params ? '<div class="tool-params">' + params + '</div>' : ''}
+                    ${isOverridden ? '<div class="tool-actions"><button class="btn-xs" onclick="resetToolDesc(\'' + escHtml(t.name) + '\')">Reset to default</button></div>' : ''}
+                </div>`;
+            }).join('');
+        } catch (e) {
+            console.error('Failed to load tools:', e);
+        }
+    }
+
+    function escHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    async function toggleTool(name, enabled) {
+        try {
+            await fetch(`/api/tools/${name}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled }),
+            });
+            loadTools();
+        } catch (e) {
+            console.error('Failed to toggle tool:', e);
+        }
+    }
+
+    async function saveToolDesc(textarea) {
+        const name = textarea.dataset.tool;
+        const defaultDesc = textarea.dataset.default;
+        const value = textarea.value.trim();
+        // Only save if different from default
+        const override = (value && value !== defaultDesc) ? value : '';
+        try {
+            await fetch(`/api/tools/${name}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ description_override: override }),
+            });
+            loadTools();
+        } catch (e) {
+            console.error('Failed to save tool description:', e);
+        }
+    }
+
+    async function resetToolDesc(name) {
+        try {
+            await fetch(`/api/tools/${name}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reset: true }),
+            });
+            loadTools();
+        } catch (e) {
+            console.error('Failed to reset tool:', e);
+        }
+    }
+
+    // --- Custom Commands ---
+
+    async function loadCommands() {
+        try {
+            const res = await fetch('/api/commands');
+            const data = await res.json();
+            const list = document.getElementById('commands-list');
+            if (!data.commands || data.commands.length === 0) {
+                list.innerHTML = '<p style="color:var(--text-dim);font-size:0.85rem;">No custom commands yet.</p>';
+                return;
+            }
+            list.innerHTML = data.commands.map(c => `<div class="cmd-card">
+                <div class="cmd-card-header">
+                    <span class="cmd-name">/${escHtml(c.name)}</span>
+                    <div class="cmd-actions">
+                        <button class="btn-xs" onclick="useCommand(${c.id}, '${escHtml(c.name)}', \`${escHtml(c.prompt_template)}\`)">Use</button>
+                        <button class="btn-xs" onclick="editCommand(${c.id})">Edit</button>
+                        <button class="btn-xs" onclick="deleteCommand(${c.id})">Del</button>
+                    </div>
+                </div>
+                ${c.description ? '<div class="cmd-desc">' + escHtml(c.description) + '</div>' : ''}
+                <div class="cmd-template">${escHtml(c.prompt_template)}</div>
+            </div>`).join('');
+        } catch (e) {
+            console.error('Failed to load commands:', e);
+        }
+    }
+
+    function showCommandForm(editData) {
+        const container = document.getElementById('command-form-container');
+        const isEdit = !!editData;
+        container.innerHTML = `<div class="cmd-form">
+            <label>Name (no spaces)</label>
+            <input type="text" id="cmd-name" placeholder="e.g. summarize" value="${editData ? escHtml(editData.name) : ''}">
+            <label>Description</label>
+            <input type="text" id="cmd-desc" placeholder="What this command does" value="${editData ? escHtml(editData.description) : ''}">
+            <label>Prompt Template (use {input} for user input)</label>
+            <textarea id="cmd-template" placeholder="e.g. Summarize this: {input}">${editData ? escHtml(editData.prompt_template) : ''}</textarea>
+            <div class="cmd-form-actions">
+                <button class="btn-sm" onclick="saveCommand(${editData ? editData.id : 'null'})">${isEdit ? 'Update' : 'Create'}</button>
+                <button class="btn-sm danger" onclick="hideCommandForm()">Cancel</button>
+            </div>
+        </div>`;
+    }
+
+    function hideCommandForm() {
+        document.getElementById('command-form-container').innerHTML = '';
+    }
+
+    async function saveCommand(editId) {
+        const name = document.getElementById('cmd-name').value.trim();
+        const description = document.getElementById('cmd-desc').value.trim();
+        const prompt_template = document.getElementById('cmd-template').value.trim();
+
+        if (!name || !prompt_template) {
+            alert('Name and prompt template are required.');
+            return;
+        }
+
+        try {
+            const url = editId ? `/api/commands/${editId}` : '/api/commands';
+            const method = editId ? 'PUT' : 'POST';
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, description, prompt_template }),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                alert(err.detail || 'Failed to save command');
+                return;
+            }
+            hideCommandForm();
+            loadCommands();
+        } catch (e) {
+            console.error('Failed to save command:', e);
+        }
+    }
+
+    async function editCommand(id) {
+        try {
+            const res = await fetch('/api/commands');
+            const data = await res.json();
+            const cmd = data.commands.find(c => c.id === id);
+            if (cmd) showCommandForm(cmd);
+        } catch (e) {
+            console.error('Failed to load command for edit:', e);
+        }
+    }
+
+    async function deleteCommand(id) {
+        if (!confirm('Delete this command?')) return;
+        try {
+            await fetch(`/api/commands/${id}`, { method: 'DELETE' });
+            loadCommands();
+        } catch (e) {
+            console.error('Failed to delete command:', e);
+        }
+    }
+
+    function useCommand(id, name, template) {
+        if (template.includes('{input}')) {
+            messageInput.value = `/${name} `;
+            messageInput.focus();
+        } else {
+            messageInput.value = `/${name}`;
+            sendMessage();
         }
     }
 

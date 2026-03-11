@@ -1,3 +1,4 @@
+import copy
 import json
 import asyncio
 import inspect
@@ -89,14 +90,34 @@ async def _execute_tool(tool_name: str, arguments: dict, chat_id: int) -> str:
         return f"Tool error: {e}"
 
 
+def _get_effective_tool_schemas() -> list[dict]:
+    """Return TOOL_SCHEMAS filtered by tool_overrides (disabled tools removed, descriptions overridden)."""
+    overrides = db.get_tool_overrides()
+    if not overrides:
+        return TOOL_SCHEMAS
+
+    effective = []
+    for schema in TOOL_SCHEMAS:
+        name = schema["function"]["name"]
+        override = overrides.get(name)
+        if override and not override["enabled"]:
+            continue
+        if override and override.get("description_override"):
+            schema = copy.deepcopy(schema)
+            schema["function"]["description"] = override["description_override"]
+        effective.append(schema)
+    return effective
+
+
 async def _call_llm(client, model, messages, use_tools=True):
     """Call the LLM with fallback: try with tools, then without."""
-    if use_tools and TOOL_SCHEMAS:
+    effective_schemas = _get_effective_tool_schemas() if use_tools else []
+    if use_tools and effective_schemas:
         try:
             response = await client.chat.completions.create(
                 model=model,
                 messages=messages,
-                tools=TOOL_SCHEMAS,
+                tools=effective_schemas,
             )
             if response is not None and response.choices:
                 return response
@@ -208,7 +229,7 @@ async def _maybe_summarize(client, model, chat_id: int):
             return
 
         # Get older messages (beyond the recent 20)
-        old_messages = db.get_history(chat_id, limit=50, offset=20)
+        old_messages = db.get_history_with_offset(chat_id, limit=50, offset=20)
         if len(old_messages) < 10:
             return
 

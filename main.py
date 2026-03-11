@@ -24,7 +24,7 @@ from handlers.commands import (
     stats_command,
     handle_callback,
 )
-from handlers.messages import handle_text, handle_photo, handle_document, handle_voice
+from handlers.messages import handle_text, handle_photo, handle_document, handle_voice, handle_custom_command
 from scheduler import check_reminders
 from web import create_web_app
 
@@ -60,6 +60,9 @@ def build_telegram_app():
     app.add_handler(CommandHandler("reminders", reminders_command))
     app.add_handler(CommandHandler("history", history_command))
     app.add_handler(CommandHandler("stats", stats_command))
+
+    # Catch-all for custom commands (after all built-in CommandHandlers)
+    app.add_handler(MessageHandler(filters.COMMAND, handle_custom_command))
 
     # Inline keyboard callbacks
     app.add_handler(CallbackQueryHandler(handle_callback))

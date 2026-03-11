@@ -81,6 +81,22 @@ def _init_schema(conn: sqlite3.Connection):
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS idx_file_uploads_chat ON file_uploads(chat_id);
+
+        CREATE TABLE IF NOT EXISTS tool_overrides (
+            tool_name TEXT PRIMARY KEY,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            description_override TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS custom_commands (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT NOT NULL DEFAULT '',
+            prompt_template TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
     """)
 
 
@@ -330,3 +346,90 @@ def get_history_with_offset(chat_id: int, limit: int = 30, offset: int = 0) -> l
         (chat_id, limit, offset),
     ).fetchall()
     return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+
+
+# --- Tool override helpers ---
+
+def get_tool_overrides() -> dict[str, dict]:
+    conn = get_conn()
+    rows = conn.execute("SELECT tool_name, enabled, description_override FROM tool_overrides").fetchall()
+    return {r["tool_name"]: {"enabled": bool(r["enabled"]), "description_override": r["description_override"]} for r in rows}
+
+
+def get_tool_override(tool_name: str) -> dict | None:
+    conn = get_conn()
+    row = conn.execute("SELECT tool_name, enabled, description_override FROM tool_overrides WHERE tool_name = ?", (tool_name,)).fetchone()
+    return dict(row) if row else None
+
+
+def upsert_tool_override(tool_name: str, enabled: bool | None = None, description_override: str | None = None):
+    conn = get_conn()
+    existing = get_tool_override(tool_name)
+    if existing:
+        if enabled is not None:
+            conn.execute("UPDATE tool_overrides SET enabled = ?, updated_at = datetime('now') WHERE tool_name = ?", (int(enabled), tool_name))
+        if description_override is not None:
+            conn.execute("UPDATE tool_overrides SET description_override = ?, updated_at = datetime('now') WHERE tool_name = ?", (description_override or None, tool_name))
+    else:
+        conn.execute(
+            "INSERT INTO tool_overrides (tool_name, enabled, description_override) VALUES (?, ?, ?)",
+            (tool_name, int(enabled) if enabled is not None else 1, description_override),
+        )
+    conn.commit()
+
+
+def delete_tool_override(tool_name: str):
+    conn = get_conn()
+    conn.execute("DELETE FROM tool_overrides WHERE tool_name = ?", (tool_name,))
+    conn.commit()
+
+
+# --- Custom command helpers ---
+
+RESERVED_COMMANDS = {"start", "help", "reset", "memory", "clearmemory", "reminders", "history", "stats"}
+
+
+def get_custom_commands() -> list[dict]:
+    conn = get_conn()
+    rows = conn.execute("SELECT id, name, description, prompt_template, created_at, updated_at FROM custom_commands ORDER BY name").fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_custom_command(command_id: int) -> dict | None:
+    conn = get_conn()
+    row = conn.execute("SELECT id, name, description, prompt_template FROM custom_commands WHERE id = ?", (command_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def get_custom_command_by_name(name: str) -> dict | None:
+    conn = get_conn()
+    row = conn.execute("SELECT id, name, description, prompt_template FROM custom_commands WHERE name = ?", (name.lower(),)).fetchone()
+    return dict(row) if row else None
+
+
+def create_custom_command(name: str, description: str, prompt_template: str) -> int:
+    conn = get_conn()
+    cur = conn.execute(
+        "INSERT INTO custom_commands (name, description, prompt_template) VALUES (?, ?, ?)",
+        (name.lower(), description, prompt_template),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def update_custom_command(command_id: int, name: str | None = None, description: str | None = None, prompt_template: str | None = None):
+    conn = get_conn()
+    if name is not None:
+        conn.execute("UPDATE custom_commands SET name = ?, updated_at = datetime('now') WHERE id = ?", (name.lower(), command_id))
+    if description is not None:
+        conn.execute("UPDATE custom_commands SET description = ?, updated_at = datetime('now') WHERE id = ?", (description, command_id))
+    if prompt_template is not None:
+        conn.execute("UPDATE custom_commands SET prompt_template = ?, updated_at = datetime('now') WHERE id = ?", (prompt_template, command_id))
+    conn.commit()
+
+
+def delete_custom_command(command_id: int) -> bool:
+    conn = get_conn()
+    cur = conn.execute("DELETE FROM custom_commands WHERE id = ?", (command_id,))
+    conn.commit()
+    return cur.rowcount > 0
