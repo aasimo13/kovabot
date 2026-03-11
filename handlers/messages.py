@@ -232,6 +232,150 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         typing_task.cancel()
 
 
+# ======================== FILE EXTRACTION ========================
+
+# Extension → (label, language for code fence)
+CODE_EXTENSIONS = {
+    # Arduino / Embedded
+    ".ino": ("Arduino Sketch", "cpp"), ".pde": ("Processing/Arduino", "cpp"),
+    # C / C++
+    ".c": ("C", "c"), ".h": ("C Header", "c"), ".cpp": ("C++", "cpp"),
+    ".hpp": ("C++ Header", "cpp"), ".cc": ("C++", "cpp"), ".cxx": ("C++", "cpp"),
+    # Python
+    ".py": ("Python", "python"), ".pyw": ("Python", "python"), ".pyi": ("Python Stub", "python"),
+    # JavaScript / TypeScript
+    ".js": ("JavaScript", "javascript"), ".jsx": ("JSX", "jsx"),
+    ".ts": ("TypeScript", "typescript"), ".tsx": ("TSX", "tsx"),
+    ".mjs": ("JavaScript Module", "javascript"), ".cjs": ("CommonJS", "javascript"),
+    # Web
+    ".html": ("HTML", "html"), ".htm": ("HTML", "html"), ".css": ("CSS", "css"),
+    ".scss": ("SCSS", "scss"), ".sass": ("Sass", "sass"), ".less": ("Less", "less"),
+    ".vue": ("Vue", "vue"), ".svelte": ("Svelte", "svelte"),
+    # Data / Config
+    ".json": ("JSON", "json"), ".yaml": ("YAML", "yaml"), ".yml": ("YAML", "yaml"),
+    ".toml": ("TOML", "toml"), ".xml": ("XML", "xml"), ".ini": ("INI", "ini"),
+    ".cfg": ("Config", "ini"), ".conf": ("Config", ""), ".env": ("Environment", ""),
+    ".properties": ("Properties", "properties"),
+    # Shell / Scripts
+    ".sh": ("Shell Script", "bash"), ".bash": ("Bash Script", "bash"),
+    ".zsh": ("Zsh Script", "bash"), ".fish": ("Fish Script", "fish"),
+    ".bat": ("Batch File", "batch"), ".cmd": ("Command Script", "batch"),
+    ".ps1": ("PowerShell", "powershell"),
+    # Systems / Low-level
+    ".rs": ("Rust", "rust"), ".go": ("Go", "go"), ".java": ("Java", "java"),
+    ".kt": ("Kotlin", "kotlin"), ".kts": ("Kotlin Script", "kotlin"),
+    ".swift": ("Swift", "swift"), ".m": ("Objective-C", "objectivec"),
+    ".scala": ("Scala", "scala"), ".zig": ("Zig", "zig"),
+    # Ruby / PHP / Perl
+    ".rb": ("Ruby", "ruby"), ".php": ("PHP", "php"), ".pl": ("Perl", "perl"),
+    ".pm": ("Perl Module", "perl"),
+    # Databases
+    ".sql": ("SQL", "sql"), ".prisma": ("Prisma", "prisma"),
+    # Docs / Markup
+    ".md": ("Markdown", "markdown"), ".rst": ("reStructuredText", "rst"),
+    ".tex": ("LaTeX", "latex"), ".adoc": ("AsciiDoc", "asciidoc"),
+    # DevOps / CI
+    ".dockerfile": ("Dockerfile", "dockerfile"),
+    ".tf": ("Terraform", "hcl"), ".hcl": ("HCL", "hcl"),
+    ".nix": ("Nix", "nix"),
+    # Data Science
+    ".r": ("R", "r"), ".jl": ("Julia", "julia"), ".m": ("MATLAB", "matlab"),
+    # Build
+    ".cmake": ("CMake", "cmake"), ".gradle": ("Gradle", "groovy"),
+    ".sbt": ("SBT", "scala"),
+    # Misc
+    ".proto": ("Protocol Buffers", "protobuf"), ".graphql": ("GraphQL", "graphql"),
+    ".gql": ("GraphQL", "graphql"), ".wasm": ("WebAssembly", ""),
+    ".lua": ("Lua", "lua"), ".dart": ("Dart", "dart"),
+    ".ex": ("Elixir", "elixir"), ".exs": ("Elixir Script", "elixir"),
+    ".erl": ("Erlang", "erlang"), ".hs": ("Haskell", "haskell"),
+    ".clj": ("Clojure", "clojure"), ".lisp": ("Lisp", "lisp"),
+    ".v": ("Verilog", "verilog"), ".vhd": ("VHDL", "vhdl"), ".vhdl": ("VHDL", "vhdl"),
+    ".sv": ("SystemVerilog", "systemverilog"),
+    ".asm": ("Assembly", "asm"), ".s": ("Assembly", "asm"),
+    ".S": ("Assembly", "asm"),
+    # IoT / Embedded config
+    ".platformio.ini": ("PlatformIO Config", "ini"),
+}
+
+# Files detected by exact name
+NAMED_FILES = {
+    "Makefile": ("Makefile", "makefile"), "makefile": ("Makefile", "makefile"),
+    "CMakeLists.txt": ("CMake", "cmake"),
+    "Dockerfile": ("Dockerfile", "dockerfile"),
+    "docker-compose.yml": ("Docker Compose", "yaml"),
+    "docker-compose.yaml": ("Docker Compose", "yaml"),
+    ".gitignore": ("Git Ignore", ""), ".gitmodules": ("Git Modules", ""),
+    ".editorconfig": ("Editor Config", "ini"),
+    "Vagrantfile": ("Vagrantfile", "ruby"),
+    "Rakefile": ("Rakefile", "ruby"),
+    "Gemfile": ("Gemfile", "ruby"),
+    "Procfile": ("Procfile", ""),
+    "platformio.ini": ("PlatformIO Config", "ini"),
+    "requirements.txt": ("Python Requirements", ""),
+    "package.json": ("NPM Package", "json"),
+    "tsconfig.json": ("TypeScript Config", "json"),
+    "Cargo.toml": ("Cargo Config", "toml"),
+    "go.mod": ("Go Module", ""),
+    "go.sum": ("Go Sum", ""),
+}
+
+# Binary file extensions we can describe but not read as text
+BINARY_EXTENSIONS = {
+    ".bin", ".hex", ".elf", ".o", ".obj", ".a", ".lib", ".so", ".dll", ".dylib",
+    ".exe", ".out", ".class", ".jar", ".war",
+    ".stl", ".obj", ".step", ".stp", ".iges", ".igs",  # 3D / CAD
+    ".pcb", ".sch", ".brd", ".kicad_pcb", ".kicad_sch",  # PCB / EDA (some are text)
+    ".gerber", ".gbr", ".drl",  # Gerber
+    ".mp3", ".wav", ".ogg", ".flac", ".aac",  # Audio
+    ".mp4", ".avi", ".mov", ".mkv", ".webm",  # Video
+    ".ttf", ".otf", ".woff", ".woff2",  # Fonts
+    ".sqlite", ".db",  # Databases
+}
+
+MAX_TEXT_LEN = 15000
+MAX_TEXT_FALLBACK_LEN = 10000
+
+
+def _detect_file_type(filename: str) -> tuple[str, str] | None:
+    """Detect file type from filename. Returns (label, language) or None."""
+    basename = os.path.basename(filename)
+    if basename in NAMED_FILES:
+        return NAMED_FILES[basename]
+    ext = os.path.splitext(filename.lower())[1]
+    if ext in CODE_EXTENSIONS:
+        return CODE_EXTENSIONS[ext]
+    return None
+
+
+def _decode_text(file_bytes: bytes) -> str | None:
+    """Try to decode bytes as text with multiple encodings."""
+    for encoding in ("utf-8", "utf-8-sig", "latin-1", "cp1252"):
+        try:
+            return file_bytes.decode(encoding)
+        except (UnicodeDecodeError, ValueError):
+            continue
+    return None
+
+
+def _extract_text_file(file_bytes: bytes, filename: str) -> tuple[str, str]:
+    """Extract text from a code/text file. Returns (label, formatted_text)."""
+    detected = _detect_file_type(filename)
+    text = _decode_text(file_bytes)
+    if text is None:
+        return "Binary File", f"(Binary file, {len(file_bytes)} bytes — cannot display as text)"
+
+    if len(text) > MAX_TEXT_LEN:
+        text = text[:MAX_TEXT_LEN] + "\n...(truncated)"
+
+    if detected:
+        label, lang = detected
+        if lang:
+            return label, f"```{lang}\n{text}\n```"
+        return label, text
+    return "File", text
+
+
 def _extract_pdf_text(file_bytes: bytes) -> str:
     """Extract text from a PDF file using PyPDF2."""
     from PyPDF2 import PdfReader
@@ -246,17 +390,16 @@ def _extract_pdf_text(file_bytes: bytes) -> str:
 
 def _extract_csv_text(file_bytes: bytes) -> str:
     """Read CSV and format as a markdown table."""
-    text = file_bytes.decode("utf-8")
+    text = _decode_text(file_bytes) or file_bytes.decode("utf-8", errors="replace")
     reader = csv.reader(io.StringIO(text))
     rows = list(reader)
     if not rows:
         return "(Empty CSV)"
 
-    # Build markdown table
     header = rows[0]
     lines = ["| " + " | ".join(header) + " |"]
     lines.append("| " + " | ".join("---" for _ in header) + " |")
-    for row in rows[1:101]:  # Limit to 100 data rows
+    for row in rows[1:101]:
         lines.append("| " + " | ".join(row) + " |")
     result = "\n".join(lines)
     if len(rows) > 101:
@@ -273,7 +416,7 @@ def _extract_docx_text(file_bytes: bytes) -> str:
 
 
 def _extract_excel_text(file_bytes: bytes) -> str:
-    """Read Excel (.xlsx) and format as a markdown table."""
+    """Read Excel (.xlsx/.xls) and format as a markdown table."""
     from openpyxl import load_workbook
     wb = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
     sheets = []
@@ -297,6 +440,70 @@ def _extract_excel_text(file_bytes: bytes) -> str:
     return "\n\n".join(sheets) if sheets else "(Empty spreadsheet)"
 
 
+def _extract_zip_contents(file_bytes: bytes) -> str:
+    """List contents of a ZIP archive and extract text from small text files."""
+    import zipfile
+    zf = zipfile.ZipFile(io.BytesIO(file_bytes))
+    entries = zf.namelist()
+    lines = [f"**Archive contents ({len(entries)} files):**"]
+    for name in entries[:50]:
+        info = zf.getinfo(name)
+        size = info.file_size
+        lines.append(f"- `{name}` ({size:,} bytes)")
+    if len(entries) > 50:
+        lines.append(f"- ... and {len(entries) - 50} more files")
+
+    # Try to extract small text files
+    text_extensions = {".ino", ".c", ".h", ".cpp", ".py", ".js", ".ts", ".json", ".yaml", ".yml",
+                       ".toml", ".txt", ".md", ".html", ".css", ".xml", ".sh", ".cfg", ".ini", ".sql"}
+    extracted = []
+    total_extracted = 0
+    for name in entries:
+        ext = os.path.splitext(name.lower())[1]
+        info = zf.getinfo(name)
+        if ext in text_extensions and info.file_size < 50000 and info.file_size > 0 and total_extracted < 30000:
+            try:
+                content = zf.read(name).decode("utf-8", errors="replace")
+                detected = _detect_file_type(name)
+                lang = detected[1] if detected else ""
+                fence = f"```{lang}\n{content}\n```" if lang else content
+                extracted.append(f"\n**{name}:**\n{fence}")
+                total_extracted += len(content)
+            except Exception:
+                pass
+
+    zf.close()
+    result = "\n".join(lines)
+    if extracted:
+        result += "\n\n**Extracted files:**" + "\n".join(extracted)
+    return result
+
+
+def _extract_ipynb_text(file_bytes: bytes) -> str:
+    """Extract content from a Jupyter notebook."""
+    import json as _json
+    nb = _json.loads(file_bytes.decode("utf-8"))
+    cells = nb.get("cells", [])
+    parts = []
+    for i, cell in enumerate(cells):
+        cell_type = cell.get("cell_type", "code")
+        source = "".join(cell.get("source", []))
+        if not source.strip():
+            continue
+        if cell_type == "markdown":
+            parts.append(source)
+        else:
+            parts.append(f"```python\n{source}\n```")
+        # Include outputs for code cells
+        outputs = cell.get("outputs", [])
+        for out in outputs:
+            if "text" in out:
+                parts.append("Output:\n" + "".join(out["text"]))
+            elif "data" in out and "text/plain" in out["data"]:
+                parts.append("Output:\n" + "".join(out["data"]["text/plain"]))
+    return "\n\n".join(parts) if parts else "(Empty notebook)"
+
+
 async def _send_generated_files(chat_id: int, reply: str, update: Update):
     """Check if the agent generated any files and send them via Telegram."""
     # Look for file IDs in the agent's tool output (pattern: "id=<number>")
@@ -314,6 +521,53 @@ async def _send_generated_files(chat_id: int, reply: str, update: Update):
             logger.error(f"Error sending generated file {fid}: {e}")
 
 
+def _process_file(file_bytes: bytes, filename: str, mime: str) -> tuple[str | list, str]:
+    """Process any file and return (content_for_agent, label).
+    content_for_agent is either a string or a list (for vision/images)."""
+    fn_lower = filename.lower()
+    ext = os.path.splitext(fn_lower)[1]
+
+    # Images → vision API
+    if mime.startswith("image/"):
+        b64 = base64.b64encode(file_bytes).decode("utf-8")
+        return [
+            {"type": "text", "text": "What's in this image?"},
+            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+        ], "Image"
+
+    # PDF
+    if mime == "application/pdf" or fn_lower.endswith(".pdf"):
+        return _extract_pdf_text(file_bytes), "PDF"
+
+    # CSV
+    if mime == "text/csv" or fn_lower.endswith(".csv") or fn_lower.endswith(".tsv"):
+        return _extract_csv_text(file_bytes), "CSV"
+
+    # Excel
+    if fn_lower.endswith((".xlsx", ".xlsm")) or "spreadsheetml" in mime:
+        return _extract_excel_text(file_bytes), "Excel"
+
+    # Word
+    if fn_lower.endswith(".docx") or "wordprocessingml" in mime:
+        return _extract_docx_text(file_bytes), "Word Document"
+
+    # ZIP / archives
+    if fn_lower.endswith((".zip", ".ino.zip")) or mime == "application/zip":
+        return _extract_zip_contents(file_bytes), "Archive"
+
+    # Jupyter notebook
+    if fn_lower.endswith(".ipynb"):
+        return _extract_ipynb_text(file_bytes), "Jupyter Notebook"
+
+    # Known binary files — describe but don't try to read
+    if ext in BINARY_EXTENSIONS:
+        return f"(Binary file: {filename}, {len(file_bytes):,} bytes, type: {ext})", "Binary File"
+
+    # Everything else — try as text (code files, configs, scripts, etc.)
+    label, text = _extract_text_file(file_bytes, filename)
+    return text, label
+
+
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update.effective_user.id):
         await update.message.reply_text("Unauthorized.")
@@ -328,65 +582,22 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         filename = doc.file_name or "unknown"
 
         file = await context.bot.get_file(doc.file_id)
-        file_bytes = await file.download_as_bytearray()
+        file_bytes = bytes(await file.download_as_bytearray())
         caption = update.message.caption or ""
 
-        if mime.startswith("image/"):
-            b64 = base64.b64encode(file_bytes).decode("utf-8")
-            content = [
-                {"type": "text", "text": caption or "What's in this image?"},
-                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-            ]
+        content, label = _process_file(file_bytes, filename, mime)
+
+        if isinstance(content, list):
+            # Vision content (images)
+            if caption:
+                content[0]["text"] = caption
             reply = await run_agent(chat_id, content)
-        elif mime == "application/pdf" or filename.lower().endswith(".pdf"):
-            text = _extract_pdf_text(bytes(file_bytes))
-            if len(text) > 15000:
-                text = text[:15000] + "\n...(truncated)"
-            user_message = f"[PDF: {filename}]\n{text}"
-            if caption:
-                user_message = f"{caption}\n\n{user_message}"
-            reply = await run_agent(chat_id, user_message)
-        elif mime == "text/csv" or filename.lower().endswith(".csv"):
-            text = _extract_csv_text(bytes(file_bytes))
-            if len(text) > 15000:
-                text = text[:15000] + "\n...(truncated)"
-            user_message = f"[CSV: {filename}]\n{text}"
-            if caption:
-                user_message = f"{caption}\n\n{user_message}"
-            reply = await run_agent(chat_id, user_message)
-        elif mime in ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",) or filename.lower().endswith(".xlsx"):
-            text = _extract_excel_text(bytes(file_bytes))
-            if len(text) > 15000:
-                text = text[:15000] + "\n...(truncated)"
-            user_message = f"[Excel: {filename}]\n{text}"
-            if caption:
-                user_message = f"{caption}\n\n{user_message}"
-            reply = await run_agent(chat_id, user_message)
-        elif mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" or filename.lower().endswith(".docx"):
-            text = _extract_docx_text(bytes(file_bytes))
-            if len(text) > 15000:
-                text = text[:15000] + "\n...(truncated)"
-            user_message = f"[Word Document: {filename}]\n{text}"
-            if caption:
-                user_message = f"{caption}\n\n{user_message}"
-            reply = await run_agent(chat_id, user_message)
         else:
-            try:
-                text = file_bytes.decode("utf-8")
-            except UnicodeDecodeError:
-                await update.message.reply_text(
-                    "I can process text files, images, PDFs, CSVs, Excel, and Word (.docx) files. "
-                    "This file type isn't supported yet."
-                )
-                return
-
-            if len(text) > 10000:
-                text = text[:10000] + "\n...(truncated)"
-
-            user_message = f"[File: {filename}]\n{text}"
+            if len(content) > MAX_TEXT_LEN:
+                content = content[:MAX_TEXT_LEN] + "\n...(truncated)"
+            user_message = f"[{label}: {filename}]\n{content}"
             if caption:
                 user_message = f"{caption}\n\n{user_message}"
-
             reply = await run_agent(chat_id, user_message)
 
         await _send_reply(update, reply)

@@ -136,62 +136,20 @@ def create_web_app() -> FastAPI:
 
         db.save_file_upload(chat_id, safe_name, save_path, mime, "web")
 
-        # Process file based on type
-        import io
+        # Process file using shared handler
         try:
-            if mime.startswith("image/"):
-                import base64
-                b64 = base64.b64encode(file_bytes).decode("utf-8")
-                content = [
-                    {"type": "text", "text": caption or "What's in this image?"},
-                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
-                ]
-                reply = await run_agent(chat_id, content)
-            elif mime == "application/pdf" or safe_name.lower().endswith(".pdf"):
-                from handlers.messages import _extract_pdf_text
-                text = _extract_pdf_text(file_bytes)
-                if len(text) > 15000:
-                    text = text[:15000] + "\n...(truncated)"
-                user_message = f"[PDF: {safe_name}]\n{text}"
-                if caption:
-                    user_message = f"{caption}\n\n{user_message}"
-                reply = await run_agent(chat_id, user_message)
-            elif mime == "text/csv" or safe_name.lower().endswith(".csv"):
-                from handlers.messages import _extract_csv_text
-                text = _extract_csv_text(file_bytes)
-                if len(text) > 15000:
-                    text = text[:15000] + "\n...(truncated)"
-                user_message = f"[CSV: {safe_name}]\n{text}"
-                if caption:
-                    user_message = f"{caption}\n\n{user_message}"
-                reply = await run_agent(chat_id, user_message)
-            elif safe_name.lower().endswith(".xlsx"):
-                from handlers.messages import _extract_excel_text
-                text = _extract_excel_text(file_bytes)
-                if len(text) > 15000:
-                    text = text[:15000] + "\n...(truncated)"
-                user_message = f"[Excel: {safe_name}]\n{text}"
-                if caption:
-                    user_message = f"{caption}\n\n{user_message}"
-                reply = await run_agent(chat_id, user_message)
-            elif mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" or safe_name.lower().endswith(".docx"):
-                from handlers.messages import _extract_docx_text
-                text = _extract_docx_text(file_bytes)
-                if len(text) > 15000:
-                    text = text[:15000] + "\n...(truncated)"
-                user_message = f"[Word Document: {safe_name}]\n{text}"
-                if caption:
-                    user_message = f"{caption}\n\n{user_message}"
-                reply = await run_agent(chat_id, user_message)
-            else:
-                try:
-                    text = file_bytes.decode("utf-8")
-                except UnicodeDecodeError:
-                    return JSONResponse({"reply": "This file type isn't supported yet. I can process text, PDF, CSV, Excel, Word (.docx), and image files.", "files": []})
+            from handlers.messages import _process_file, MAX_TEXT_LEN
+            content, label = _process_file(file_bytes, safe_name, mime)
 
-                if len(text) > 10000:
-                    text = text[:10000] + "\n...(truncated)"
-                user_message = f"[File: {safe_name}]\n{text}"
+            if isinstance(content, list):
+                # Vision content (images)
+                if caption:
+                    content[0]["text"] = caption
+                reply = await run_agent(chat_id, content)
+            else:
+                if len(content) > MAX_TEXT_LEN:
+                    content = content[:MAX_TEXT_LEN] + "\n...(truncated)"
+                user_message = f"[{label}: {safe_name}]\n{content}"
                 if caption:
                     user_message = f"{caption}\n\n{user_message}"
                 reply = await run_agent(chat_id, user_message)
