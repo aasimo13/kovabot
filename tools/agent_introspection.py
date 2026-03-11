@@ -1,7 +1,6 @@
 import logging
 
 import db
-from tools import TOOL_REGISTRY
 
 logger = logging.getLogger(__name__)
 
@@ -9,6 +8,9 @@ logger = logging.getLogger(__name__)
 async def get_agent_context(chat_id: int = 0) -> str:
     """Inspect the agent's own available tools, memory, and current state."""
     try:
+        # Lazy import to avoid circular dependency (tools/__init__.py imports this module)
+        from tools import TOOL_REGISTRY
+
         lines = []
 
         # Available tools
