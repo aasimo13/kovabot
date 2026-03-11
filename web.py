@@ -684,6 +684,61 @@ def create_web_app() -> FastAPI:
         plans = db.get_active_plans(chat_id)
         return JSONResponse({"plans": plans})
 
+    # --- Diagnostics endpoint ---
+
+    @app.get("/api/diagnostics")
+    async def api_diagnostics(request: Request):
+        """Test tool calling and return diagnostic info."""
+        if not _check_auth(request):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        from config import OPENAI_API_KEY, OPENWEBUI_URL, OPENWEBUI_API_KEY, MODEL_ID
+        from agent import _get_tool_client, _get_effective_tool_schemas, _get_client, _get_model
+
+        diag = {
+            "openai_key_set": bool(OPENAI_API_KEY),
+            "openwebui_url_set": bool(OPENWEBUI_URL),
+            "openwebui_key_set": bool(OPENWEBUI_API_KEY),
+            "model_id": MODEL_ID or "(auto-detect)",
+            "db_system_prompt_set": bool(db.get_setting("system_prompt", "").strip()),
+            "db_system_prompt_extra": bool(db.get_setting("system_prompt_extra", "").strip()),
+            "developer_mode": db.get_setting("developer_mode", "false"),
+            "effective_tools_count": len(_get_effective_tool_schemas()),
+            "registered_tools": list(TOOL_REGISTRY.keys()),
+        }
+
+        # Test tool calling
+        tool_client, tool_backend = _get_tool_client()
+        diag["tool_backend"] = tool_backend
+        tool_model = MODEL_ID if tool_backend != "openai" else (MODEL_ID if MODEL_ID and MODEL_ID.startswith("gpt") else "gpt-4o")
+        diag["tool_model"] = tool_model
+
+        try:
+            test_response = await tool_client.chat.completions.create(
+                model=tool_model,
+                messages=[{"role": "user", "content": "What is 2+2? Use the think tool to reason about it."}],
+                tools=[{
+                    "type": "function",
+                    "function": {
+                        "name": "think",
+                        "description": "Think step by step",
+                        "parameters": {"type": "object", "properties": {"thought": {"type": "string"}}, "required": ["thought"]},
+                    },
+                }],
+                max_tokens=100,
+            )
+            if test_response and test_response.choices:
+                msg = test_response.choices[0].message
+                diag["tool_test"] = "PASS"
+                diag["tool_test_used_tool"] = bool(msg.tool_calls)
+                diag["tool_test_content"] = msg.content[:200] if msg.content else None
+            else:
+                diag["tool_test"] = "FAIL - empty response"
+        except Exception as e:
+            diag["tool_test"] = f"FAIL - {e}"
+
+        return JSONResponse(diag)
+
     # --- Settings endpoints ---
 
     @app.get("/api/settings")
@@ -699,6 +754,7 @@ def create_web_app() -> FastAPI:
 
         defaults = {
             "system_prompt": SYSTEM_PROMPT,
+            "system_prompt_extra": "",
             "user_timezone": USER_TIMEZONE,
             "max_tool_rounds": str(MAX_TOOL_ROUNDS),
             "tts_enabled": str(TTS_ENABLED).lower(),
@@ -712,8 +768,12 @@ def create_web_app() -> FastAPI:
 
         db_settings = db.get_all_settings()
         for key in defaults:
-            if key in db_settings:
+            if key in db_settings and key != "system_prompt":
                 defaults[key] = db_settings[key]
+        # system_prompt always comes from config.py (read-only in dashboard)
+        # system_prompt_extra can be edited
+        if "system_prompt_extra" in db_settings:
+            defaults["system_prompt_extra"] = db_settings["system_prompt_extra"]
 
         return JSONResponse(defaults)
 
@@ -724,18 +784,14 @@ def create_web_app() -> FastAPI:
 
         body = await request.json()
         allowed_keys = {
-            "system_prompt", "user_timezone", "max_tool_rounds",
+            "system_prompt_extra", "user_timezone", "max_tool_rounds",
             "tts_enabled", "tts_voice", "tts_model",
             "briefing_enabled", "briefing_time", "follow_up_enabled",
             "developer_mode",
         }
         for key, value in body.items():
             if key in allowed_keys:
-                # Blank system_prompt clears override, falls back to config.py default
-                if key == "system_prompt" and not str(value).strip():
-                    db.delete_setting(key)
-                else:
-                    db.set_setting(key, str(value))
+                db.set_setting(key, str(value))
         return JSONResponse({"ok": True})
 
     # --- Memory management endpoints ---

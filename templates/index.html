@@ -163,9 +163,14 @@
                 <div class="settings-section active" id="settings-general">
                     <h3>General</h3>
                     <div class="setting-group">
-                        <label>System Prompt</label>
-                        <p class="setting-hint">The core instructions that define Kova's personality, behavior, and tool usage</p>
-                        <textarea class="setting-textarea" id="set-system-prompt" rows="14"></textarea>
+                        <label>Core System Prompt <span style="font-size:11px;color:var(--text-muted);font-weight:400">(read-only, managed in code)</span></label>
+                        <p class="setting-hint">The core agent instructions. Edit config.py to change these.</p>
+                        <textarea class="setting-textarea" id="set-system-prompt" rows="8" readonly style="opacity:0.6;cursor:not-allowed;font-size:11px"></textarea>
+                    </div>
+                    <div class="setting-group">
+                        <label>Additional Instructions</label>
+                        <p class="setting-hint">Extra instructions appended to the core prompt. Use this to customize behavior without touching the core prompt.</p>
+                        <textarea class="setting-textarea" id="set-system-prompt-extra" rows="4" placeholder="e.g. Always respond in Spanish. My name is Aaron. I prefer concise answers."></textarea>
                     </div>
                     <div class="setting-row">
                         <div class="setting-group">
@@ -923,6 +928,7 @@ async function loadSettings() {
         const r = await fetch('/api/settings');
         const s = await r.json();
         document.getElementById('set-system-prompt').value = s.system_prompt || '';
+        document.getElementById('set-system-prompt-extra').value = s.system_prompt_extra || '';
         document.getElementById('set-timezone').value = s.user_timezone || 'UTC';
         document.getElementById('set-max-rounds').value = s.max_tool_rounds || '10';
         document.getElementById('set-tts-enabled').checked = s.tts_enabled === 'true';
@@ -948,7 +954,7 @@ async function saveSettings(section) {
     let data = {};
     if (section === 'general') {
         data = {
-            system_prompt: document.getElementById('set-system-prompt').value,
+            system_prompt_extra: document.getElementById('set-system-prompt-extra').value,
             user_timezone: document.getElementById('set-timezone').value,
             max_tool_rounds: document.getElementById('set-max-rounds').value,
         };

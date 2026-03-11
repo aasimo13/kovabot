@@ -108,9 +108,12 @@ def _build_system_prompt(chat_id: int) -> str:
     facts = db.get_facts(chat_id)
     summary = db.get_conversation_summary(chat_id)
 
-    # DB override only if explicitly set and non-empty; otherwise always use config.py
-    db_prompt = db.get_setting("system_prompt", "")
-    prompt = db_prompt if db_prompt.strip() else SYSTEM_PROMPT
+    # Always use config.py as the base prompt.
+    # DB "system_prompt_extra" can append additional instructions, but never override.
+    prompt = SYSTEM_PROMPT
+    extra = db.get_setting("system_prompt_extra", "")
+    if extra.strip():
+        prompt += f"\n\nAdditional instructions:\n{extra}"
 
     if facts:
         fact_lines = "\n".join(f"- [{f['category']}] {f['key']}: {f['value']}" for f in facts)
@@ -119,6 +122,7 @@ def _build_system_prompt(chat_id: int) -> str:
     if summary:
         prompt += f"\n\nSummary of earlier conversation:\n{summary}"
 
+    logger.debug(f"System prompt: {len(prompt)} chars, {len(facts) if facts else 0} facts, summary={'yes' if summary else 'no'}")
     return prompt
 
 
@@ -218,12 +222,16 @@ async def _call_llm(client, model, messages, use_tools=True):
                 tools=effective_schemas,
             )
             if response is not None and response.choices:
+                msg = response.choices[0].message
+                has_tools = bool(msg.tool_calls) if msg else False
+                logger.info(f"LLM response: has_tool_calls={has_tools}, has_content={bool(msg.content) if msg else False}")
                 return response
             logger.warning(f"LLM returned empty with tools via {tool_backend} (model={tool_model})")
         except Exception as e:
-            logger.error(f"LLM API error (with tools via {tool_backend}): {e}")
+            logger.error(f"LLM API error (with tools via {tool_backend}): {e}", exc_info=True)
 
     # Fallback without tools (uses primary client/model)
+    logger.warning("Falling back to no-tools LLM call")
     response = await client.chat.completions.create(
         model=model,
         messages=messages,

@@ -95,6 +95,17 @@ async def main():
     db.get_conn()
     logger.info("Database initialized.")
 
+    # Clear stale system_prompt from DB — config.py is now the sole source of truth
+    stale_prompt = db.get_setting("system_prompt", "")
+    if stale_prompt.strip():
+        db.delete_setting("system_prompt")
+        logger.info("Cleared stale system_prompt from DB — using config.py")
+
+    from config import OPENAI_API_KEY, OPENWEBUI_URL
+    logger.info(f"LLM config: OPENAI_API_KEY={'set' if OPENAI_API_KEY else 'NOT SET'}, OPENWEBUI_URL={'set' if OPENWEBUI_URL else 'NOT SET'}")
+    from tools import TOOL_REGISTRY
+    logger.info(f"Registered tools: {len(TOOL_REGISTRY)} — {', '.join(sorted(TOOL_REGISTRY.keys()))}")
+
     # Build and start Telegram bot (manual lifecycle)
     tg_app = build_telegram_app()
     await tg_app.initialize()
