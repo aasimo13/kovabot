@@ -1,0 +1,9 @@
+.git
+__pycache__
+*.pyc
+*.pyo
+*.db
+.DS_Store
+.env
+.claude
+README.txt
