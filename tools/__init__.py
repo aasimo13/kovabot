@@ -4,6 +4,7 @@ from tools.memory import store_fact, recall_facts
 from tools.reminders import create_reminder, list_reminders, cancel_reminder
 from tools.code_exec import execute_python
 from tools.fetch_url import fetch_url
+from tools.generate_file import generate_file
 
 # Maps function name → callable
 TOOL_REGISTRY: dict[str, callable] = {
@@ -16,6 +17,7 @@ TOOL_REGISTRY: dict[str, callable] = {
     "cancel_reminder": cancel_reminder,
     "execute_python": execute_python,
     "fetch_url": fetch_url,
+    "generate_file": generate_file,
 }
 
 # OpenAI-format function schemas
@@ -185,6 +187,27 @@ TOOL_SCHEMAS = [
                     }
                 },
                 "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_file",
+            "description": "Create a file and send it to the user. Use this when asked to create documents, export data, write code files, generate reports, etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "The filename with extension, e.g. 'report.txt', 'data.csv', 'script.py'.",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "The text content of the file.",
+                    },
+                },
+                "required": ["filename", "content"],
             },
         },
     },

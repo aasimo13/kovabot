@@ -1,5 +1,8 @@
+import asyncio
 import logging
+import os
 
+import uvicorn
 from telegram.ext import (
     ApplicationBuilder,
     CallbackQueryHandler,
@@ -23,6 +26,7 @@ from handlers.commands import (
 )
 from handlers.messages import handle_text, handle_photo, handle_document, handle_voice
 from scheduler import check_reminders
+from web import create_web_app
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -43,11 +47,8 @@ async def error_handler(update, context):
             pass
 
 
-def main():
-    # Initialize database
-    db.get_conn()
-    logger.info("Database initialized.")
-
+def build_telegram_app():
+    """Build and configure the Telegram application (without starting it)."""
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     # Commands
@@ -74,11 +75,38 @@ def main():
 
     # Scheduled tasks — check reminders every 30 seconds
     app.job_queue.run_repeating(check_reminders, interval=30, first=5)
-    logger.info("Reminder scheduler started.")
 
-    logger.info("Kova bot starting...")
-    app.run_polling()
+    return app
+
+
+async def main():
+    # Initialize database
+    db.get_conn()
+    logger.info("Database initialized.")
+
+    # Build and start Telegram bot (manual lifecycle)
+    tg_app = build_telegram_app()
+    await tg_app.initialize()
+    await tg_app.start()
+    await tg_app.updater.start_polling()
+    logger.info("Telegram bot polling started.")
+
+    # Start FastAPI web dashboard alongside
+    port = int(os.environ.get("PORT", "8080"))
+    fastapi_app = create_web_app()
+    config = uvicorn.Config(fastapi_app, host="0.0.0.0", port=port, log_level="info")
+    server = uvicorn.Server(config)
+
+    logger.info(f"Web dashboard starting on port {port}...")
+
+    try:
+        await server.serve()
+    finally:
+        logger.info("Shutting down...")
+        await tg_app.updater.stop()
+        await tg_app.stop()
+        await tg_app.shutdown()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

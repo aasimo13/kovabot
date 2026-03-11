@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kova</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+</head>
+<body>
+
+<button class="mobile-toggle" onclick="toggleSidebar()">&#9776;</button>
+
+<div class="drop-overlay" id="drop-overlay">Drop file to upload</div>
+
+<div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-header-row">
+                <div>
+                    <h1>Kova</h1>
+                    <p>Personal AI Agent</p>
+                </div>
+                <button class="sidebar-close" onclick="toggleSidebar()">&times;</button>
+            </div>
+        </div>
+
+        <div class="sidebar-tabs">
+            <button class="sidebar-tab active" data-panel="stats" onclick="switchTab(this)">Stats</button>
+            <button class="sidebar-tab" data-panel="memory" onclick="switchTab(this)">Memory</button>
+            <button class="sidebar-tab" data-panel="files" onclick="switchTab(this)">Files</button>
+        </div>
+
+        <div class="sidebar-content">
+            <!-- Stats panel -->
+            <div class="sidebar-panel active" id="panel-stats">
+                <div class="stat-grid">
+                    <div class="stat-card">
+                        <div class="label">Your Messages</div>
+                        <div class="value" id="stat-user-msgs">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label">Kova Replies</div>
+                        <div class="value" id="stat-assistant-msgs">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label">Facts Stored</div>
+                        <div class="value" id="stat-facts">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label">Reminders</div>
+                        <div class="value" id="stat-reminders">-</div>
+                    </div>
+                </div>
+                <div class="tool-usage" id="tool-usage"></div>
+            </div>
+
+            <!-- Memory panel -->
+            <div class="sidebar-panel" id="panel-memory">
+                <div id="memory-list"></div>
+            </div>
+
+            <!-- Files panel -->
+            <div class="sidebar-panel" id="panel-files">
+                <div id="files-list"></div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main chat area -->
+    <main class="main">
+        <div class="chat-container" id="chat-container"></div>
+
+        <div class="typing-indicator" id="typing-indicator">
+            <span></span><span></span><span></span>
+        </div>
+
+        <div class="input-area">
+            <div class="input-row">
+                <input type="file" id="file-input" onchange="handleFileSelect(event)">
+                <button class="btn btn-icon" onclick="document.getElementById('file-input').click()" title="Upload file">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                </button>
+                <textarea id="message-input" placeholder="Message Kova..." rows="1" onkeydown="handleKeyDown(event)" oninput="autoResize(this)"></textarea>
+                <button class="btn btn-primary" id="send-btn" onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script>
+    const chatContainer = document.getElementById('chat-container');
+    const messageInput = document.getElementById('message-input');
+    const sendBtn = document.getElementById('send-btn');
+    const typingIndicator = document.getElementById('typing-indicator');
+
+    // Configure marked
+    marked.setOptions({
+        breaks: true,
+        gfm: true,
+    });
+
+    // --- Chat ---
+
+    function addMessage(role, content, files) {
+        const div = document.createElement('div');
+        div.className = `message ${role}`;
+
+        if (role === 'assistant') {
+            div.innerHTML = DOMPurify.sanitize(marked.parse(content));
+        } else {
+            div.textContent = content;
+        }
+
+        // Add file download links
+        if (files && files.length > 0) {
+            files.forEach(f => {
+                const link = document.createElement('a');
+                link.href = `/api/files/${f.id}`;
+                link.className = 'file-link';
+                link.textContent = `📎 ${f.filename}`;
+                link.download = f.filename;
+                div.appendChild(link);
+            });
+        }
+
+        chatContainer.appendChild(div);
+        scrollToBottom();
+    }
+
+    function scrollToBottom() {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function setLoading(loading) {
+        sendBtn.disabled = loading;
+        messageInput.disabled = loading;
+        typingIndicator.classList.toggle('visible', loading);
+        if (loading) scrollToBottom();
+    }
+
+    async function sendMessage() {
+        const text = messageInput.value.trim();
+        if (!text) return;
+
+        addMessage('user', text);
+        messageInput.value = '';
+        messageInput.style.height = 'auto';
+        setLoading(true);
+
+        try {
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: text }),
+            });
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || 'Request failed');
+            }
+
+            const data = await res.json();
+            addMessage('assistant', data.reply, data.files);
+            refreshSidebar();
+        } catch (e) {
+            addMessage('assistant', `Error: ${e.message}`);
+        } finally {
+            setLoading(false);
+            messageInput.focus();
+        }
+    }
+
+    function handleKeyDown(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    }
+
+    function autoResize(el) {
+        el.style.height = 'auto';
+        el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+    }
+
+    // --- File Upload ---
+
+    async function handleFileSelect(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        await uploadFile(file);
+        event.target.value = '';
+    }
+
+    async function uploadFile(file) {
+        addMessage('user', `📎 ${file.name}`);
+        setLoading(true);
+
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const res = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || 'Upload failed');
+            }
+
+            const data = await res.json();
+            addMessage('assistant', data.reply, data.files);
+            refreshSidebar();
+        } catch (e) {
+            addMessage('assistant', `Error uploading file: ${e.message}`);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    // Drag and drop
+    let dragCounter = 0;
+    const dropOverlay = document.getElementById('drop-overlay');
+
+    document.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        dragCounter++;
+        dropOverlay.classList.add('visible');
+    });
+
+    document.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dragCounter--;
+        if (dragCounter === 0) dropOverlay.classList.remove('visible');
+    });
+
+    document.addEventListener('dragover', (e) => e.preventDefault());
+
+    document.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dragCounter = 0;
+        dropOverlay.classList.remove('visible');
+        if (e.dataTransfer.files.length > 0) {
+            uploadFile(e.dataTransfer.files[0]);
+        }
+    });
+
+    // --- Sidebar ---
+
+    function switchTab(btn) {
+        document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.sidebar-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(`panel-${btn.dataset.panel}`).classList.add('active');
+    }
+
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('open');
+    }
+
+    async function refreshSidebar() {
+        loadStats();
+        loadMemory();
+        loadFiles();
+    }
+
+    async function loadStats() {
+        try {
+            const res = await fetch('/api/stats');
+            const data = await res.json();
+            document.getElementById('stat-user-msgs').textContent = data.user_messages ?? '-';
+            document.getElementById('stat-assistant-msgs').textContent = data.assistant_messages ?? '-';
+            document.getElementById('stat-facts').textContent = data.facts_stored ?? '-';
+            document.getElementById('stat-reminders').textContent = data.active_reminders ?? '-';
+
+            const toolDiv = document.getElementById('tool-usage');
+            if (data.tool_calls && data.tool_calls.length > 0) {
+                toolDiv.innerHTML = '<h3>Tool Usage</h3>' +
+                    data.tool_calls.map(t => `<div class="tool-item"><span>${t.tool_name}</span><span>${t.cnt}</span></div>`).join('');
+            } else {
+                toolDiv.innerHTML = '';
+            }
+        } catch (e) {
+            console.error('Failed to load stats:', e);
+        }
+    }
+
+    async function loadMemory() {
+        try {
+            const res = await fetch('/api/memory');
+            const data = await res.json();
+            const list = document.getElementById('memory-list');
+            if (!data.facts || data.facts.length === 0) {
+                list.innerHTML = '<p style="color:var(--text-dim);font-size:0.85rem;">No facts stored yet.</p>';
+                return;
+            }
+            list.innerHTML = data.facts.map(f =>
+                `<div class="fact-item">
+                    <div class="fact-category">${f.category}</div>
+                    <div class="fact-key">${f.key}</div>
+                    <div class="fact-value">${f.value}</div>
+                </div>`
+            ).join('');
+        } catch (e) {
+            console.error('Failed to load memory:', e);
+        }
+    }
+
+    async function loadFiles() {
+        try {
+            const res = await fetch('/api/files');
+            const data = await res.json();
+            const list = document.getElementById('files-list');
+            if (!data.files || data.files.length === 0) {
+                list.innerHTML = '<p style="color:var(--text-dim);font-size:0.85rem;">No files yet.</p>';
+                return;
+            }
+            list.innerHTML = data.files.map(f =>
+                `<div class="file-item">
+                    <a href="/api/files/${f.id}" download>${f.filename}</a>
+                    <span class="file-meta">${f.source} &middot; ${f.created_at ? f.created_at.slice(0, 10) : ''}</span>
+                </div>`
+            ).join('');
+        } catch (e) {
+            console.error('Failed to load files:', e);
+        }
+    }
+
+    // --- Load history on page load ---
+
+    async function loadHistory() {
+        try {
+            const res = await fetch('/api/history?limit=50');
+            const data = await res.json();
+            if (data.messages && data.messages.length > 0) {
+                data.messages.forEach(m => addMessage(m.role, m.content));
+            } else {
+                chatContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="icon">&#128172;</div>
+                        <p>Send a message to start chatting with Kova</p>
+                    </div>`;
+            }
+        } catch (e) {
+            console.error('Failed to load history:', e);
+        }
+    }
+
+    // Init
+    loadHistory();
+    refreshSidebar();
+
+    // Auto-refresh sidebar every 30s
+    setInterval(refreshSidebar, 30000);
+</script>
+
+</body>
+</html>

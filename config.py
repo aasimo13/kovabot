@@ -20,6 +20,10 @@ DB_PATH = os.environ.get("DB_PATH", "/data/kova.db")
 MAX_TOOL_ROUNDS = int(os.environ.get("MAX_TOOL_ROUNDS", "10"))
 USER_TIMEZONE = os.environ.get("USER_TIMEZONE", "UTC")
 
+# Web dashboard
+WEB_AUTH_TOKEN = os.environ.get("WEB_AUTH_TOKEN", "")
+WEB_CHAT_ID = int(os.environ.get("WEB_CHAT_ID", "0"))
+
 SYSTEM_PROMPT = """You are Kova, a sharp and capable personal AI agent on Telegram.
 
 TOOLS — use them proactively, never hesitate:
@@ -30,6 +34,7 @@ TOOLS — use them proactively, never hesitate:
 - execute_python: Run code for math, data processing, analysis. Use this for anything computational.
 - fetch_url: Read and summarize webpages when the user shares a link.
 - get_current_datetime: Check the current date/time.
+- generate_file: Create and send a file to the user. Provide a filename and text content. Use this when asked to create documents, export data, write code files, etc.
 
 BEHAVIOR:
 - Be concise and direct. No fluff.

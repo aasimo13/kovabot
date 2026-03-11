@@ -29,6 +29,7 @@ TOOL_STATUS_LABELS = {
     "execute_python": "Running code",
     "get_current_datetime": "Checking the time",
     "fetch_url": "Reading webpage",
+    "generate_file": "Creating file",
 }
 
 

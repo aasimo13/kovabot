@@ -70,6 +70,17 @@ def _init_schema(conn: sqlite3.Connection):
             summary TEXT NOT NULL,
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS file_uploads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            filename TEXT NOT NULL,
+            path TEXT NOT NULL,
+            mime_type TEXT,
+            source TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_file_uploads_chat ON file_uploads(chat_id);
     """)
 
 
@@ -281,6 +292,34 @@ def get_stats(chat_id: int) -> dict:
         "facts_stored": facts_count,
         "active_reminders": reminders_count,
     }
+
+
+def save_file_upload(chat_id: int, filename: str, path: str, mime_type: str | None, source: str) -> int:
+    conn = get_conn()
+    cur = conn.execute(
+        "INSERT INTO file_uploads (chat_id, filename, path, mime_type, source) VALUES (?, ?, ?, ?, ?)",
+        (chat_id, filename, path, mime_type, source),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def get_file_upload(file_id: int) -> dict | None:
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT id, chat_id, filename, path, mime_type, source, created_at FROM file_uploads WHERE id = ?",
+        (file_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def get_file_uploads(chat_id: int, limit: int = 50) -> list[dict]:
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT id, filename, mime_type, source, created_at FROM file_uploads WHERE chat_id = ? ORDER BY created_at DESC LIMIT ?",
+        (chat_id, limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def get_history_with_offset(chat_id: int, limit: int = 30, offset: int = 0) -> list[dict]:
