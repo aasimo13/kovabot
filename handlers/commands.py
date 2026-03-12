@@ -275,10 +275,10 @@ async def diagnostics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("Unauthorized.")
         return
 
-    await update.message.reply_text("Running diagnostics...")
+    await update.message.reply_text("Running diagnostics (this takes a few seconds)...")
 
     from tools import TOOL_REGISTRY, TOOL_SCHEMAS
-    from agent import _get_effective_tool_schemas
+    from agent import _get_effective_tool_schemas, _build_system_prompt, _recent_llm_calls, _sanitize_messages
 
     lines = ["<b>Kova Diagnostics</b>\n"]
 
@@ -297,8 +297,8 @@ async def diagnostics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if len(tool_names) > 10:
         lines.append(f"    ...and {len(tool_names) - 10} more")
 
-    # 2. Test OpenAI direct (tool calling)
-    lines.append("\n<b>OpenAI Direct (tool calling)</b>")
+    # 2. Simple tool test (1 tool, 1 message)
+    lines.append("\n<b>Simple Tool Test (1 tool)</b>")
     if OPENAI_API_KEY:
         try:
             test_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
@@ -320,11 +320,7 @@ async def diagnostics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             if response and response.choices:
                 msg = response.choices[0].message
                 has_tc = bool(msg.tool_calls) if msg else False
-                lines.append(f"  Status: OK")
-                lines.append(f"  Tool calls returned: {has_tc}")
-                if has_tc:
-                    lines.append(f"  Tool name: {msg.tool_calls[0].function.name}")
-                    lines.append(f"  Args: {msg.tool_calls[0].function.arguments}")
+                lines.append(f"  Status: OK (tool_calls={has_tc})")
             else:
                 lines.append("  Status: FAIL — empty response")
         except Exception as e:
@@ -332,8 +328,51 @@ async def diagnostics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         lines.append("  Status: SKIPPED — no API key")
 
-    # 3. Test Open WebUI (if configured)
-    lines.append("\n<b>Open WebUI (chat fallback)</b>")
+    # 3. FULL agent-style test (all tools, real system prompt, real messages)
+    lines.append("\n<b>Full Agent Test (all {0} tools)</b>".format(len(effective)))
+    if OPENAI_API_KEY:
+        try:
+            chat_id = update.effective_chat.id
+            system_prompt = _build_system_prompt(chat_id)
+            test_messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": "What are the top news headlines today?"},
+            ]
+            clean = _sanitize_messages(test_messages, strip_tool_messages=False)
+
+            lines.append(f"  System prompt: {len(system_prompt)} chars")
+            lines.append(f"  Messages: {len(clean)}")
+            lines.append(f"  Tool schemas: {len(effective)}")
+
+            full_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+            response = await full_client.chat.completions.create(
+                model="gpt-4o",
+                messages=clean,
+                tools=effective,
+                tool_choice="auto",
+                max_tokens=200,
+            )
+            if response and response.choices:
+                msg = response.choices[0].message
+                has_tc = bool(msg.tool_calls) if msg else False
+                lines.append(f"  Status: OK")
+                lines.append(f"  Tool calls: {has_tc}")
+                if has_tc:
+                    for tc in msg.tool_calls:
+                        lines.append(f"    → {tc.function.name}({tc.function.arguments[:80]})")
+                if msg.content:
+                    lines.append(f"  Content: {msg.content[:100]}")
+            else:
+                lines.append("  Status: FAIL — empty response")
+        except Exception as e:
+            err_str = str(e)
+            lines.append(f"  Status: FAIL")
+            lines.append(f"  Error: {err_str[:300]}")
+    else:
+        lines.append("  Status: SKIPPED — no API key")
+
+    # 4. Open WebUI test
+    lines.append("\n<b>Open WebUI (chat)</b>")
     if OPENWEBUI_URL and OPENWEBUI_API_KEY:
         try:
             owui_client = AsyncOpenAI(base_url=f"{OPENWEBUI_URL}/api", api_key=OPENWEBUI_API_KEY)
@@ -351,7 +390,23 @@ async def diagnostics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         lines.append("  Status: SKIPPED — not configured")
 
-    # 4. Developer mode
+    # 5. Recent LLM calls
+    lines.append(f"\n<b>Recent LLM Calls ({len(_recent_llm_calls)})</b>")
+    if _recent_llm_calls:
+        for call in list(_recent_llm_calls)[-5:]:
+            status = call.get("status", "?")
+            t = call.get("time", "?")
+            if status == "ok":
+                tools_used = call.get("tool_calls", [])
+                lines.append(f"  [{t}] OK via {call.get('backend')} → {', '.join(tools_used) if tools_used else 'no tools used'}")
+            elif status == "FAILED":
+                lines.append(f"  [{t}] FAILED via {call.get('backend')}: {call.get('error', '?')[:100]}")
+            elif status == "fallback":
+                lines.append(f"  [{t}] FALLBACK via {call.get('backend')} ({call.get('reason', '?')})")
+    else:
+        lines.append("  No calls recorded yet (send a message first)")
+
+    # 6. Developer mode
     dev_mode = db.get_setting("developer_mode", "false")
     lines.append(f"\n<b>Developer mode:</b> {dev_mode}")
 

@@ -4,6 +4,7 @@ import asyncio
 import inspect
 import logging
 import time
+from collections import deque
 
 from openai import AsyncOpenAI
 
@@ -20,6 +21,9 @@ from tools import TOOL_REGISTRY, TOOL_SCHEMAS
 from tools.code_exec import execute_custom_tool
 
 logger = logging.getLogger(__name__)
+
+# Store recent LLM call diagnostics for /diagnostics command
+_recent_llm_calls: deque[dict] = deque(maxlen=10)
 
 TOOL_STATUS_LABELS = {
     "brave_search": "Searching the web",
@@ -290,10 +294,22 @@ async def _call_llm(client, model, messages, use_tools=True):
                 if response is not None and response.choices:
                     msg = response.choices[0].message
                     has_tools = bool(msg.tool_calls) if msg else False
+                    tool_names = [tc.function.name for tc in (msg.tool_calls or [])] if has_tools else []
                     logger.info(
                         f"LLM response OK: tool_calls={has_tools}, "
-                        f"content={bool(msg.content) if msg else False}"
+                        f"content={bool(msg.content) if msg else False}, "
+                        f"tools_used={tool_names}"
                     )
+                    _recent_llm_calls.append({
+                        "time": time.strftime("%H:%M:%S"),
+                        "status": "ok",
+                        "backend": tool_backend,
+                        "model": tool_model,
+                        "tools_offered": len(effective_schemas),
+                        "tool_calls": tool_names,
+                        "has_content": bool(msg.content) if msg else False,
+                        "attempt": attempt + 1,
+                    })
                     return response
                 last_error = "empty response (no choices)"
                 logger.warning(f"Tool LLM returned empty (attempt {attempt + 1})")
@@ -308,6 +324,14 @@ async def _call_llm(client, model, messages, use_tools=True):
             if attempt == 0:
                 await asyncio.sleep(1)
 
+        _recent_llm_calls.append({
+            "time": time.strftime("%H:%M:%S"),
+            "status": "FAILED",
+            "backend": tool_backend,
+            "model": tool_model,
+            "tools_offered": len(effective_schemas),
+            "error": last_error,
+        })
         logger.error(f"Tool calling FAILED after 2 attempts: {last_error}")
 
     # Fallback: use the best available client even without tools.
@@ -332,6 +356,13 @@ async def _call_llm(client, model, messages, use_tools=True):
         model=fallback_model,
         messages=fallback_messages,
     )
+    _recent_llm_calls.append({
+        "time": time.strftime("%H:%M:%S"),
+        "status": "fallback",
+        "backend": fallback_label,
+        "model": fallback_model,
+        "reason": "tools failed or disabled",
+    })
     return response
 
 
