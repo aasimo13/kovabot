@@ -121,7 +121,7 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "brave_search",
-            "description": "Search the web using Brave Search. Use this for current events, facts, or anything you're unsure about.",
+            "description": "Search the web or news using Brave Search. Use search_type='news' for headlines, current events, and breaking news. Use search_type='web' (default) for general queries, facts, how-tos, and reference.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -131,7 +131,12 @@ TOOL_SCHEMAS = [
                     },
                     "count": {
                         "type": "integer",
-                        "description": "Number of results (1-10, default 5).",
+                        "description": "Number of results (1-20, default 5).",
+                    },
+                    "search_type": {
+                        "type": "string",
+                        "enum": ["web", "news"],
+                        "description": "Type of search: 'web' for general search, 'news' for news articles and headlines.",
                     },
                 },
                 "required": ["query"],
