@@ -12,6 +12,7 @@ from tools.confirmation import request_confirmation, check_confirmation
 from tools.agent_introspection import get_agent_context
 from tools.cli import run_command
 from tools.think import think
+from tools.deep_research import deep_research
 
 # Maps function name → callable
 TOOL_REGISTRY: dict[str, callable] = {
@@ -35,6 +36,7 @@ TOOL_REGISTRY: dict[str, callable] = {
     "get_agent_context": get_agent_context,
     "run_command": run_command,
     "think": think,
+    "deep_research": deep_research,
 }
 
 # Conditionally register GitHub tools
@@ -487,6 +489,29 @@ TOOL_SCHEMAS = [
                     },
                 },
                 "required": ["command"],
+            },
+        },
+    },
+    # Deep Research
+    {
+        "type": "function",
+        "function": {
+            "name": "deep_research",
+            "description": "Perform comprehensive multi-source research on any topic. Generates multiple search queries, fetches and reads relevant pages, synthesizes into a report with citations. Use for thorough research, not quick lookups.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "The topic or question to research.",
+                    },
+                    "depth": {
+                        "type": "string",
+                        "enum": ["quick", "standard", "deep"],
+                        "description": "Research depth: 'quick' (3 sources, ~15s), 'standard' (5 sources, ~25s), 'deep' (8 sources, ~45s). Default: standard.",
+                    },
+                },
+                "required": ["topic"],
             },
         },
     },

@@ -70,6 +70,7 @@ TOOL_STATUS_LABELS = {
     "get_agent_context": "Inspecting context",
     "run_command": "Running command",
     "think": "Thinking",
+    "deep_research": "Researching in depth",
 }
 
 
