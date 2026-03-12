@@ -1,11 +1,12 @@
 import logging
 
+from openai import AsyncOpenAI
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
 import db
-from config import is_allowed
+from config import is_allowed, OPENAI_API_KEY, OPENWEBUI_URL, OPENWEBUI_API_KEY, MODEL_ID
 
 logger = logging.getLogger(__name__)
 
@@ -262,6 +263,96 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/clearmemory — Clear long-term memory\n"
             "/reminders — View active reminders\n"
             "/history — Browse past messages\n"
-            "/stats — Usage statistics\n",
+            "/stats — Usage statistics\n"
+            "/diagnostics — Check tool calling health\n",
             parse_mode=ParseMode.HTML,
         )
+
+
+async def diagnostics_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Live diagnostics: test LLM backends, tool calling, and show config."""
+    if not is_allowed(update.effective_user.id):
+        await update.message.reply_text("Unauthorized.")
+        return
+
+    await update.message.reply_text("Running diagnostics...")
+
+    from tools import TOOL_REGISTRY, TOOL_SCHEMAS
+    from agent import _get_effective_tool_schemas
+
+    lines = ["<b>Kova Diagnostics</b>\n"]
+
+    # 1. Config check
+    lines.append("<b>Config</b>")
+    lines.append(f"  OPENAI_API_KEY: {'set' if OPENAI_API_KEY else 'NOT SET'}")
+    lines.append(f"  OPENWEBUI_URL: {OPENWEBUI_URL or 'not set'}")
+    lines.append(f"  OPENWEBUI_API_KEY: {'set' if OPENWEBUI_API_KEY else 'not set'}")
+    lines.append(f"  MODEL_ID: {MODEL_ID or 'auto'}")
+    lines.append(f"  Registered tools: {len(TOOL_REGISTRY)}")
+
+    effective = _get_effective_tool_schemas()
+    lines.append(f"  Effective tool schemas: {len(effective)}")
+    tool_names = [s["function"]["name"] for s in effective]
+    lines.append(f"  Tools: {', '.join(tool_names[:10])}")
+    if len(tool_names) > 10:
+        lines.append(f"    ...and {len(tool_names) - 10} more")
+
+    # 2. Test OpenAI direct (tool calling)
+    lines.append("\n<b>OpenAI Direct (tool calling)</b>")
+    if OPENAI_API_KEY:
+        try:
+            test_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+            test_schema = [{
+                "type": "function",
+                "function": {
+                    "name": "test_tool",
+                    "description": "Test tool",
+                    "parameters": {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]},
+                },
+            }]
+            response = await test_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": "Call the test_tool with x='hello'"}],
+                tools=test_schema,
+                tool_choice="auto",
+                max_tokens=100,
+            )
+            if response and response.choices:
+                msg = response.choices[0].message
+                has_tc = bool(msg.tool_calls) if msg else False
+                lines.append(f"  Status: OK")
+                lines.append(f"  Tool calls returned: {has_tc}")
+                if has_tc:
+                    lines.append(f"  Tool name: {msg.tool_calls[0].function.name}")
+                    lines.append(f"  Args: {msg.tool_calls[0].function.arguments}")
+            else:
+                lines.append("  Status: FAIL — empty response")
+        except Exception as e:
+            lines.append(f"  Status: FAIL — {e}")
+    else:
+        lines.append("  Status: SKIPPED — no API key")
+
+    # 3. Test Open WebUI (if configured)
+    lines.append("\n<b>Open WebUI (chat fallback)</b>")
+    if OPENWEBUI_URL and OPENWEBUI_API_KEY:
+        try:
+            owui_client = AsyncOpenAI(base_url=f"{OPENWEBUI_URL}/api", api_key=OPENWEBUI_API_KEY)
+            response = await owui_client.chat.completions.create(
+                model=MODEL_ID or "gpt-4o",
+                messages=[{"role": "user", "content": "Say 'OK' and nothing else."}],
+                max_tokens=10,
+            )
+            if response and response.choices:
+                lines.append(f"  Status: OK — {response.choices[0].message.content}")
+            else:
+                lines.append("  Status: FAIL — empty response")
+        except Exception as e:
+            lines.append(f"  Status: FAIL — {e}")
+    else:
+        lines.append("  Status: SKIPPED — not configured")
+
+    # 4. Developer mode
+    dev_mode = db.get_setting("developer_mode", "false")
+    lines.append(f"\n<b>Developer mode:</b> {dev_mode}")
+
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)

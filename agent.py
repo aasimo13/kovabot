@@ -205,36 +205,132 @@ def _get_effective_tool_schemas() -> list[dict]:
     return effective
 
 
+def _sanitize_messages(messages: list[dict], strip_tool_messages: bool = False) -> list[dict]:
+    """Clean messages for API compatibility.
+    - Ensures all messages have valid content
+    - Optionally strips tool_calls and tool-role messages (for no-tools fallback)
+    """
+    cleaned = []
+    for msg in messages:
+        # Skip tool-result messages when falling back to no-tools
+        if strip_tool_messages and msg.get("role") == "tool":
+            continue
+
+        # Handle assistant messages that are response objects (not dicts)
+        if hasattr(msg, "role"):
+            # This is a ChatCompletionMessage object, convert to dict
+            d = {"role": msg.role}
+            if msg.content:
+                d["content"] = msg.content
+            if not strip_tool_messages and hasattr(msg, "tool_calls") and msg.tool_calls:
+                d["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    }
+                    for tc in msg.tool_calls
+                ]
+            elif strip_tool_messages:
+                # Strip tool_calls from assistant messages, keep only content
+                if not msg.content:
+                    d["content"] = "(internal processing)"
+                # Skip this message entirely if it was only a tool call with no text
+                if not msg.content and hasattr(msg, "tool_calls") and msg.tool_calls:
+                    continue
+            cleaned.append(d)
+            continue
+
+        # Regular dict message
+        m = dict(msg)
+        if strip_tool_messages:
+            m.pop("tool_calls", None)
+            if m.get("role") == "assistant" and not m.get("content"):
+                continue  # Skip empty assistant messages that only had tool_calls
+
+        # Ensure content is present (OpenAI rejects null content on some roles)
+        if m.get("role") in ("user", "system") and not m.get("content"):
+            m["content"] = ""
+
+        cleaned.append(m)
+
+    return cleaned
+
+
 async def _call_llm(client, model, messages, use_tools=True):
-    """Call the LLM with fallback: try with tools, then without.
-    Uses OpenAI directly for tool calls when available (Open WebUI often
-    doesn't support the tools parameter)."""
+    """Call the LLM with robust tool support.
+
+    Strategy:
+    1. Try with tools via OpenAI direct (with retry)
+    2. If tools fail, fall back to OpenAI direct WITHOUT tools (not Open WebUI)
+    3. Never silently swallow errors — log everything clearly
+    """
     effective_schemas = _get_effective_tool_schemas() if use_tools else []
+
     if use_tools and effective_schemas:
         tool_client, tool_backend = _get_tool_client()
         # Use a known tool-capable model when going direct to OpenAI
         tool_model = model if tool_backend != "openai" else (model if model.startswith("gpt") else "gpt-4o")
-        try:
-            logger.info(f"Tool call via {tool_backend}, model={tool_model}, {len(effective_schemas)} tools")
-            response = await tool_client.chat.completions.create(
-                model=tool_model,
-                messages=messages,
-                tools=effective_schemas,
-            )
-            if response is not None and response.choices:
-                msg = response.choices[0].message
-                has_tools = bool(msg.tool_calls) if msg else False
-                logger.info(f"LLM response: has_tool_calls={has_tools}, has_content={bool(msg.content) if msg else False}")
-                return response
-            logger.warning(f"LLM returned empty with tools via {tool_backend} (model={tool_model})")
-        except Exception as e:
-            logger.error(f"LLM API error (with tools via {tool_backend}): {e}", exc_info=True)
+        clean_messages = _sanitize_messages(messages, strip_tool_messages=False)
 
-    # Fallback without tools (uses primary client/model)
-    logger.warning("Falling back to no-tools LLM call")
-    response = await client.chat.completions.create(
-        model=model,
-        messages=messages,
+        last_error = None
+        for attempt in range(2):
+            try:
+                logger.info(
+                    f"Tool call attempt {attempt + 1}/2 via {tool_backend}, "
+                    f"model={tool_model}, {len(effective_schemas)} tools, "
+                    f"{len(clean_messages)} messages"
+                )
+                response = await tool_client.chat.completions.create(
+                    model=tool_model,
+                    messages=clean_messages,
+                    tools=effective_schemas,
+                    tool_choice="auto",
+                )
+                if response is not None and response.choices:
+                    msg = response.choices[0].message
+                    has_tools = bool(msg.tool_calls) if msg else False
+                    logger.info(
+                        f"LLM response OK: tool_calls={has_tools}, "
+                        f"content={bool(msg.content) if msg else False}"
+                    )
+                    return response
+                last_error = "empty response (no choices)"
+                logger.warning(f"Tool LLM returned empty (attempt {attempt + 1})")
+            except Exception as e:
+                last_error = str(e)
+                logger.error(
+                    f"Tool LLM error (attempt {attempt + 1}, "
+                    f"backend={tool_backend}, model={tool_model}): {e}",
+                    exc_info=True,
+                )
+            # Brief pause before retry
+            if attempt == 0:
+                await asyncio.sleep(1)
+
+        logger.error(f"Tool calling FAILED after 2 attempts: {last_error}")
+
+    # Fallback: use the best available client even without tools.
+    # Prefer OpenAI direct over Open WebUI for response quality.
+    if OPENAI_API_KEY:
+        fallback_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+        fallback_model = model if model.startswith("gpt") else "gpt-4o"
+        fallback_label = "openai-direct"
+    else:
+        fallback_client = client
+        fallback_model = model
+        fallback_label = "primary"
+
+    # Strip tool messages from history (no-tools endpoint rejects them)
+    fallback_messages = _sanitize_messages(messages, strip_tool_messages=True)
+
+    logger.warning(
+        f"Falling back to no-tools LLM call via {fallback_label}, "
+        f"model={fallback_model}, {len(fallback_messages)} messages"
+    )
+    response = await fallback_client.chat.completions.create(
+        model=fallback_model,
+        messages=fallback_messages,
     )
     return response
 
