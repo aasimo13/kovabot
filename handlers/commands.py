@@ -1,12 +1,13 @@
+import json
 import logging
 
-from openai import AsyncOpenAI
+from anthropic import AsyncAnthropic
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
 import db
-from config import is_allowed, OPENAI_API_KEY, OPENWEBUI_URL, OPENWEBUI_API_KEY, MODEL_ID
+from config import is_allowed, ANTHROPIC_API_KEY, CLAUDE_MODEL, MODEL_ID
 
 logger = logging.getLogger(__name__)
 
@@ -278,16 +279,15 @@ async def diagnostics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text("Running diagnostics (this takes a few seconds)...")
 
     from tools import TOOL_REGISTRY, TOOL_SCHEMAS
-    from agent import _get_effective_tool_schemas, _build_system_prompt, _recent_llm_calls, _sanitize_messages
+    from agent import _get_effective_tool_schemas, _build_system_prompt, _recent_llm_calls, _openai_to_anthropic_tools
 
+    model = MODEL_ID or CLAUDE_MODEL
     lines = ["<b>Kova Diagnostics</b>\n"]
 
     # 1. Config check
     lines.append("<b>Config</b>")
-    lines.append(f"  OPENAI_API_KEY: {'set' if OPENAI_API_KEY else 'NOT SET'}")
-    lines.append(f"  OPENWEBUI_URL: {OPENWEBUI_URL or 'not set'}")
-    lines.append(f"  OPENWEBUI_API_KEY: {'set' if OPENWEBUI_API_KEY else 'not set'}")
-    lines.append(f"  MODEL_ID: {MODEL_ID or 'auto'}")
+    lines.append(f"  ANTHROPIC_API_KEY: {'set' if ANTHROPIC_API_KEY else 'NOT SET'}")
+    lines.append(f"  Model: {model}")
     lines.append(f"  Registered tools: {len(TOOL_REGISTRY)}")
 
     effective = _get_effective_tool_schemas()
@@ -299,27 +299,23 @@ async def diagnostics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # 2. Simple tool test (1 tool, 1 message)
     lines.append("\n<b>Simple Tool Test (1 tool)</b>")
-    if OPENAI_API_KEY:
+    if ANTHROPIC_API_KEY:
         try:
-            test_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-            test_schema = [{
-                "type": "function",
-                "function": {
-                    "name": "test_tool",
-                    "description": "Test tool",
-                    "parameters": {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]},
-                },
+            test_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+            test_tools = [{
+                "name": "test_tool",
+                "description": "Test tool",
+                "input_schema": {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]},
             }]
-            response = await test_client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": "Call the test_tool with x='hello'"}],
-                tools=test_schema,
-                tool_choice="auto",
+            response = await test_client.messages.create(
+                model=model,
                 max_tokens=100,
+                messages=[{"role": "user", "content": "Call the test_tool with x='hello'"}],
+                tools=test_tools,
+                tool_choice={"type": "auto"},
             )
-            if response and response.choices:
-                msg = response.choices[0].message
-                has_tc = bool(msg.tool_calls) if msg else False
+            if response and response.content:
+                has_tc = any(b.type == "tool_use" for b in response.content)
                 lines.append(f"  Status: OK (tool_calls={has_tc})")
             else:
                 lines.append("  Status: FAIL — empty response")
@@ -328,40 +324,37 @@ async def diagnostics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         lines.append("  Status: SKIPPED — no API key")
 
-    # 3. FULL agent-style test (all tools, real system prompt, real messages)
+    # 3. FULL agent-style test (all tools, real system prompt)
     lines.append("\n<b>Full Agent Test (all {0} tools)</b>".format(len(effective)))
-    if OPENAI_API_KEY:
+    if ANTHROPIC_API_KEY:
         try:
             chat_id = update.effective_chat.id
             system_prompt = _build_system_prompt(chat_id)
-            test_messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": "What are the top news headlines today?"},
-            ]
-            clean = _sanitize_messages(test_messages, strip_tool_messages=False)
+            anthropic_tools = _openai_to_anthropic_tools(effective)
 
             lines.append(f"  System prompt: {len(system_prompt)} chars")
-            lines.append(f"  Messages: {len(clean)}")
             lines.append(f"  Tool schemas: {len(effective)}")
 
-            full_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-            response = await full_client.chat.completions.create(
-                model="gpt-4o",
-                messages=clean,
-                tools=effective,
-                tool_choice="auto",
+            full_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+            response = await full_client.messages.create(
+                model=model,
                 max_tokens=200,
+                system=[{"type": "text", "text": system_prompt}],
+                messages=[{"role": "user", "content": "What are the top news headlines today?"}],
+                tools=anthropic_tools,
+                tool_choice={"type": "auto"},
             )
-            if response and response.choices:
-                msg = response.choices[0].message
-                has_tc = bool(msg.tool_calls) if msg else False
+            if response and response.content:
+                tool_blocks = [b for b in response.content if b.type == "tool_use"]
+                text_blocks = [b for b in response.content if b.type == "text"]
+                has_tc = bool(tool_blocks)
                 lines.append(f"  Status: OK")
                 lines.append(f"  Tool calls: {has_tc}")
                 if has_tc:
-                    for tc in msg.tool_calls:
-                        lines.append(f"    → {tc.function.name}({tc.function.arguments[:80]})")
-                if msg.content:
-                    lines.append(f"  Content: {msg.content[:100]}")
+                    for b in tool_blocks:
+                        lines.append(f"    → {b.name}({json.dumps(b.input)[:80]})")
+                if text_blocks:
+                    lines.append(f"  Content: {text_blocks[0].text[:100]}")
             else:
                 lines.append("  Status: FAIL — empty response")
         except Exception as e:
@@ -371,26 +364,7 @@ async def diagnostics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         lines.append("  Status: SKIPPED — no API key")
 
-    # 4. Open WebUI test
-    lines.append("\n<b>Open WebUI (chat)</b>")
-    if OPENWEBUI_URL and OPENWEBUI_API_KEY:
-        try:
-            owui_client = AsyncOpenAI(base_url=f"{OPENWEBUI_URL}/api", api_key=OPENWEBUI_API_KEY)
-            response = await owui_client.chat.completions.create(
-                model=MODEL_ID or "gpt-4o",
-                messages=[{"role": "user", "content": "Say 'OK' and nothing else."}],
-                max_tokens=10,
-            )
-            if response and response.choices:
-                lines.append(f"  Status: OK — {response.choices[0].message.content}")
-            else:
-                lines.append("  Status: FAIL — empty response")
-        except Exception as e:
-            lines.append(f"  Status: FAIL — {e}")
-    else:
-        lines.append("  Status: SKIPPED — not configured")
-
-    # 5. Recent LLM calls
+    # 4. Recent LLM calls
     lines.append(f"\n<b>Recent LLM Calls ({len(_recent_llm_calls)})</b>")
     if _recent_llm_calls:
         for call in list(_recent_llm_calls)[-5:]:
@@ -406,7 +380,7 @@ async def diagnostics_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         lines.append("  No calls recorded yet (send a message first)")
 
-    # 6. Developer mode
+    # 5. Developer mode
     dev_mode = db.get_setting("developer_mode", "false")
     lines.append(f"\n<b>Developer mode:</b> {dev_mode}")
 

@@ -4,11 +4,13 @@ import os
 TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 ALLOWED_USER_ID = os.environ.get("ALLOWED_USER_ID", "")
 
-# LLM backend — point at Open Web UI or directly at OpenAI
-OPENWEBUI_URL = os.environ.get("OPENWEBUI_URL", "")
-OPENWEBUI_API_KEY = os.environ.get("OPENWEBUI_API_KEY", "")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+# LLM backend
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
 MODEL_ID = os.environ.get("MODEL_ID", "")
+
+# OpenAI — kept for TTS, STT, embeddings
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 # Brave Search
 BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY", "")

@@ -2,10 +2,10 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from openai import AsyncOpenAI
+from anthropic import AsyncAnthropic
 
 import db
-from config import OPENAI_API_KEY, USER_TIMEZONE, BRIEFING_ENABLED, BRIEFING_TIME
+from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, USER_TIMEZONE, BRIEFING_ENABLED, BRIEFING_TIME
 
 logger = logging.getLogger(__name__)
 
@@ -71,19 +71,19 @@ async def generate_morning_briefing(context):
             sections.append("No events, reminders, or notifications for today.")
 
         # Compose briefing via LLM
-        client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+        client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
         raw_data = "\n\n".join(sections)
-        prompt = [
-            {"role": "system", "content": "You are Kova. Compose a concise, friendly morning briefing from the data below. Use markdown. Be brief."},
-            {"role": "user", "content": f"Today is {now.strftime('%A, %B %d, %Y')}.\n\n{raw_data}"},
-        ]
 
-        response = await client.chat.completions.create(
-            model="gpt-4o",
-            messages=prompt,
+        response = await client.messages.create(
+            model=CLAUDE_MODEL,
             max_tokens=500,
+            system=[{"type": "text", "text": "You are Kova. Compose a concise, friendly morning briefing from the data below. Use markdown. Be brief."}],
+            messages=[
+                {"role": "user", "content": f"Today is {now.strftime('%A, %B %d, %Y')}.\n\n{raw_data}"},
+            ],
         )
-        briefing_text = response.choices[0].message.content if response.choices else "Good morning!"
+        text_blocks = [b.text for b in response.content if b.type == "text"]
+        briefing_text = "\n".join(text_blocks) if text_blocks else "Good morning!"
 
         # Send to Telegram
         try:

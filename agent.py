@@ -6,13 +6,12 @@ import logging
 import time
 from collections import deque
 
-from openai import AsyncOpenAI
+from anthropic import AsyncAnthropic
 
 import db
 from config import (
-    OPENWEBUI_URL,
-    OPENWEBUI_API_KEY,
-    OPENAI_API_KEY,
+    ANTHROPIC_API_KEY,
+    CLAUDE_MODEL,
     MODEL_ID,
     MAX_TOOL_ROUNDS,
     SYSTEM_PROMPT,
@@ -84,39 +83,27 @@ TOOL_STATUS_LABELS = {
 }
 
 
-def _get_client() -> AsyncOpenAI:
-    if OPENWEBUI_URL and OPENWEBUI_API_KEY:
-        return AsyncOpenAI(
-            base_url=f"{OPENWEBUI_URL}/api",
-            api_key=OPENWEBUI_API_KEY,
-        )
-    return AsyncOpenAI(api_key=OPENAI_API_KEY)
+def _get_client() -> AsyncAnthropic:
+    return AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
 
-def _get_tool_client() -> tuple[AsyncOpenAI, str]:
-    """Get a client suitable for tool-calling requests.
-    Open WebUI often doesn't support the tools parameter properly,
-    so use OpenAI directly when available."""
-    if OPENAI_API_KEY:
-        return AsyncOpenAI(api_key=OPENAI_API_KEY), "openai"
-    if OPENWEBUI_URL and OPENWEBUI_API_KEY:
-        return AsyncOpenAI(
-            base_url=f"{OPENWEBUI_URL}/api",
-            api_key=OPENWEBUI_API_KEY,
-        ), "openwebui"
-    return AsyncOpenAI(api_key=OPENAI_API_KEY), "openai"
+def _get_model() -> str:
+    return MODEL_ID if MODEL_ID else CLAUDE_MODEL
 
 
-async def _get_model(client: AsyncOpenAI) -> str:
-    if MODEL_ID:
-        return MODEL_ID
-    try:
-        models = await client.models.list()
-        if models.data:
-            return models.data[0].id
-    except Exception as e:
-        logger.error(f"Error fetching models: {e}")
-    return "gpt-4o"
+def _openai_to_anthropic_tools(openai_schemas: list[dict]) -> list[dict]:
+    """Convert OpenAI-format tool schemas to Anthropic format."""
+    tools = []
+    for s in openai_schemas:
+        tools.append({
+            "name": s["function"]["name"],
+            "description": s["function"]["description"],
+            "input_schema": s["function"]["parameters"],
+        })
+    # Enable prompt caching on last tool
+    if tools:
+        tools[-1]["cache_control"] = {"type": "ephemeral"}
+    return tools
 
 
 def _build_system_prompt(chat_id: int) -> str:
@@ -170,17 +157,14 @@ async def _execute_tool(tool_name: str, arguments: dict, chat_id: int) -> str:
     return f"Unknown tool: {tool_name}"
 
 
-async def _execute_tools_parallel(tool_calls, chat_id: int, status_callback=None) -> list[dict]:
-    """Execute multiple tool calls concurrently via asyncio.gather.
-    Returns tool-role messages in the original order."""
+async def _execute_tools_parallel(tool_blocks, chat_id: int, status_callback=None) -> list[dict]:
+    """Execute multiple tool-use blocks concurrently via asyncio.gather.
+    Returns list of tool_result dicts for inclusion in a user message."""
     sem = asyncio.Semaphore(5)
 
-    async def _run_one(tool_call):
-        fn_name = tool_call.function.name
-        try:
-            fn_args = json.loads(tool_call.function.arguments)
-        except json.JSONDecodeError:
-            fn_args = {}
+    async def _run_one(block):
+        fn_name = block["name"]
+        fn_args = block["input"]
 
         logger.info(f"Tool call: {fn_name}({fn_args})")
 
@@ -200,26 +184,26 @@ async def _execute_tools_parallel(tool_calls, chat_id: int, status_callback=None
             db.log_tool_call(chat_id, fn_name, json.dumps(fn_args), result)
 
         return {
-            "role": "tool",
-            "tool_call_id": tool_call.id,
+            "type": "tool_result",
+            "tool_use_id": block["id"],
             "content": result,
         }
 
-    tasks = [_run_one(tc) for tc in tool_calls]
+    tasks = [_run_one(b) for b in tool_blocks]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # Convert any unexpected exceptions to error messages
-    messages = []
+    tool_results = []
     for i, r in enumerate(results):
         if isinstance(r, Exception):
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_calls[i].id,
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": tool_blocks[i]["id"],
                 "content": f"Tool error: {r}",
             })
         else:
-            messages.append(r)
-    return messages
+            tool_results.append(r)
+    return tool_results
 
 
 DEVELOPER_TOOLS = {"run_command", "execute_python", "read_file", "write_file", "edit_file", "list_directory", "execute_code", "spawn_agent"}
@@ -272,161 +256,143 @@ def _get_effective_tool_schemas() -> list[dict]:
     return effective
 
 
-def _sanitize_messages(messages: list[dict], strip_tool_messages: bool = False) -> list[dict]:
-    """Clean messages for API compatibility.
-    - Ensures all messages have valid content
-    - Optionally strips tool_calls and tool-role messages (for no-tools fallback)
+def _sanitize_messages(messages: list[dict]) -> list[dict]:
+    """Clean messages for Anthropic API compatibility.
+    - Removes system messages (handled separately via system= parameter)
+    - Ensures strict alternating user/assistant order
+    - Normalizes content formats
     """
     cleaned = []
     for msg in messages:
-        # Skip tool-result messages when falling back to no-tools
-        if strip_tool_messages and msg.get("role") == "tool":
+        role = msg.get("role")
+        if role == "system":
             continue
-
-        # Handle assistant messages that are response objects (not dicts)
-        if hasattr(msg, "role"):
-            # This is a ChatCompletionMessage object, convert to dict
-            d = {"role": msg.role}
-            if msg.content:
-                d["content"] = msg.content
-            if not strip_tool_messages and hasattr(msg, "tool_calls") and msg.tool_calls:
-                d["tool_calls"] = [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
-                    }
-                    for tc in msg.tool_calls
-                ]
-            elif strip_tool_messages:
-                # Strip tool_calls from assistant messages, keep only content
-                if not msg.content:
-                    d["content"] = "(internal processing)"
-                # Skip this message entirely if it was only a tool call with no text
-                if not msg.content and hasattr(msg, "tool_calls") and msg.tool_calls:
-                    continue
-            cleaned.append(d)
+        content = msg.get("content")
+        if role == "user" and not content:
+            content = ""
+        if role == "assistant" and not content:
             continue
+        cleaned.append({"role": role, "content": content})
 
-        # Regular dict message
-        m = dict(msg)
-        if strip_tool_messages:
-            m.pop("tool_calls", None)
-            if m.get("role") == "assistant" and not m.get("content"):
-                continue  # Skip empty assistant messages that only had tool_calls
+    # Enforce strict alternating by merging consecutive same-role messages
+    merged = []
+    for msg in cleaned:
+        if merged and merged[-1]["role"] == msg["role"]:
+            prev = merged[-1]
+            # Merge content
+            prev_content = prev["content"]
+            new_content = msg["content"]
+            if isinstance(prev_content, str) and isinstance(new_content, str):
+                prev["content"] = prev_content + "\n" + new_content
+            elif isinstance(prev_content, list) and isinstance(new_content, list):
+                prev["content"] = prev_content + new_content
+            elif isinstance(prev_content, str) and isinstance(new_content, list):
+                prev["content"] = [{"type": "text", "text": prev_content}] + new_content
+            elif isinstance(prev_content, list) and isinstance(new_content, str):
+                prev["content"] = prev_content + [{"type": "text", "text": new_content}]
+        else:
+            merged.append(dict(msg))
 
-        # Ensure content is present (OpenAI rejects null content on some roles)
-        if m.get("role") in ("user", "system") and not m.get("content"):
-            m["content"] = ""
+    # Ensure first message is from user
+    if merged and merged[0]["role"] != "user":
+        merged.insert(0, {"role": "user", "content": ""})
 
-        cleaned.append(m)
-
-    return cleaned
+    return merged
 
 
-async def _call_llm(client, model, messages, use_tools=True):
-    """Call the LLM with robust tool support.
-
-    Strategy:
-    1. Try with tools via OpenAI direct (with retry)
-    2. If tools fail, fall back to OpenAI direct WITHOUT tools (not Open WebUI)
-    3. Never silently swallow errors — log everything clearly
-    """
+async def _call_llm(client, model, system_prompt, messages, use_tools=True):
+    """Call the Anthropic Messages API with tool support and retry logic."""
     effective_schemas = _get_effective_tool_schemas() if use_tools else []
+    anthropic_tools = _openai_to_anthropic_tools(effective_schemas) if effective_schemas else None
 
-    if use_tools and effective_schemas:
-        tool_client, tool_backend = _get_tool_client()
-        # Use a known tool-capable model when going direct to OpenAI
-        tool_model = model if tool_backend != "openai" else (model if model.startswith("gpt") else "gpt-4o")
-        clean_messages = _sanitize_messages(messages, strip_tool_messages=False)
+    # System prompt with caching
+    system = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
 
-        last_error = None
-        for attempt in range(2):
-            try:
-                logger.info(
-                    f"Tool call attempt {attempt + 1}/2 via {tool_backend}, "
-                    f"model={tool_model}, {len(effective_schemas)} tools, "
-                    f"{len(clean_messages)} messages"
-                )
-                response = await tool_client.chat.completions.create(
-                    model=tool_model,
-                    messages=clean_messages,
-                    tools=effective_schemas,
-                    tool_choice="auto",
-                )
-                if response is not None and response.choices:
-                    msg = response.choices[0].message
-                    has_tools = bool(msg.tool_calls) if msg else False
-                    tool_names = [tc.function.name for tc in (msg.tool_calls or [])] if has_tools else []
-                    logger.info(
-                        f"LLM response OK: tool_calls={has_tools}, "
-                        f"content={bool(msg.content) if msg else False}, "
-                        f"tools_used={tool_names}"
-                    )
-                    _recent_llm_calls.append({
-                        "time": time.strftime("%H:%M:%S"),
-                        "status": "ok",
-                        "backend": tool_backend,
-                        "model": tool_model,
-                        "tools_offered": len(effective_schemas),
-                        "tool_calls": tool_names,
-                        "has_content": bool(msg.content) if msg else False,
-                        "attempt": attempt + 1,
-                    })
-                    return response
-                last_error = "empty response (no choices)"
-                logger.warning(f"Tool LLM returned empty (attempt {attempt + 1})")
-            except Exception as e:
-                last_error = str(e)
-                logger.error(
-                    f"Tool LLM error (attempt {attempt + 1}, "
-                    f"backend={tool_backend}, model={tool_model}): {e}",
-                    exc_info=True,
-                )
-            # Brief pause before retry
-            if attempt == 0:
-                await asyncio.sleep(1)
+    clean_messages = _sanitize_messages(messages)
 
-        _recent_llm_calls.append({
-            "time": time.strftime("%H:%M:%S"),
-            "status": "FAILED",
-            "backend": tool_backend,
-            "model": tool_model,
-            "tools_offered": len(effective_schemas),
-            "error": last_error,
-        })
-        logger.error(f"Tool calling FAILED after 2 attempts: {last_error}")
+    last_error = None
+    for attempt in range(2):
+        try:
+            kwargs = dict(
+                model=model,
+                max_tokens=4096,
+                system=system,
+                messages=clean_messages,
+            )
+            if anthropic_tools:
+                kwargs["tools"] = anthropic_tools
+                kwargs["tool_choice"] = {"type": "auto"}
 
-    # Fallback: use the best available client even without tools.
-    # Prefer OpenAI direct over Open WebUI for response quality.
-    if OPENAI_API_KEY:
-        fallback_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-        fallback_model = model if model.startswith("gpt") else "gpt-4o"
-        fallback_label = "openai-direct"
-    else:
-        fallback_client = client
-        fallback_model = model
-        fallback_label = "primary"
+            logger.info(
+                f"LLM call attempt {attempt + 1}/2, model={model}, "
+                f"{len(effective_schemas)} tools, {len(clean_messages)} messages"
+            )
 
-    # Strip tool messages from history (no-tools endpoint rejects them)
-    fallback_messages = _sanitize_messages(messages, strip_tool_messages=True)
+            response = await client.messages.create(**kwargs)
 
-    logger.warning(
-        f"Falling back to no-tools LLM call via {fallback_label}, "
-        f"model={fallback_model}, {len(fallback_messages)} messages"
-    )
-    response = await fallback_client.chat.completions.create(
-        model=fallback_model,
-        messages=fallback_messages,
+            # Parse response for diagnostics
+            tool_blocks = [b for b in response.content if b.type == "tool_use"]
+            text_blocks = [b for b in response.content if b.type == "text"]
+            tool_names = [b.name for b in tool_blocks]
+
+            logger.info(
+                f"LLM response OK: tool_calls={bool(tool_blocks)}, "
+                f"content={bool(text_blocks)}, tools_used={tool_names}"
+            )
+            _recent_llm_calls.append({
+                "time": time.strftime("%H:%M:%S"),
+                "status": "ok",
+                "backend": "anthropic",
+                "model": model,
+                "tools_offered": len(effective_schemas),
+                "tool_calls": tool_names,
+                "has_content": bool(text_blocks),
+                "attempt": attempt + 1,
+            })
+            return response
+        except Exception as e:
+            last_error = str(e)
+            logger.error(f"LLM error (attempt {attempt + 1}): {e}", exc_info=True)
+        if attempt == 0:
+            await asyncio.sleep(1)
+
+    _recent_llm_calls.append({
+        "time": time.strftime("%H:%M:%S"),
+        "status": "FAILED",
+        "backend": "anthropic",
+        "model": model,
+        "tools_offered": len(effective_schemas),
+        "error": last_error,
+    })
+    logger.error(f"LLM FAILED after 2 attempts: {last_error}")
+
+    # Fallback: try without tools
+    logger.warning("Falling back to no-tools LLM call")
+    response = await client.messages.create(
+        model=model,
+        max_tokens=4096,
+        system=system,
+        messages=clean_messages,
     )
     _recent_llm_calls.append({
         "time": time.strftime("%H:%M:%S"),
         "status": "fallback",
-        "backend": fallback_label,
-        "model": fallback_model,
-        "reason": "tools failed or disabled",
+        "backend": "anthropic",
+        "model": model,
+        "reason": "tools failed",
     })
     return response
+
+
+def _response_to_content_dicts(response) -> list[dict]:
+    """Convert Anthropic response content blocks to serializable dicts."""
+    content = []
+    for block in response.content:
+        if block.type == "text":
+            content.append({"type": "text", "text": block.text})
+        elif block.type == "tool_use":
+            content.append({"type": "tool_use", "id": block.id, "name": block.name, "input": block.input})
+    return content
 
 
 async def run_agent(chat_id: int, user_content: str | list, status_callback=None) -> str:
@@ -437,7 +403,7 @@ async def run_agent(chat_id: int, user_content: str | list, status_callback=None
     Returns the final assistant text response.
     """
     client = _get_client()
-    model = await _get_model(client)
+    model = _get_model()
 
     # Save user message to DB
     if isinstance(user_content, str):
@@ -446,11 +412,11 @@ async def run_agent(chat_id: int, user_content: str | list, status_callback=None
         text_parts = [p["text"] for p in user_content if p.get("type") == "text"]
         db.save_message(chat_id, "user", " ".join(text_parts) if text_parts else "[media]")
 
-    # Build messages
+    # Build messages — system prompt is separate in Anthropic
     system_prompt = _build_system_prompt(chat_id)
     history = db.get_history(chat_id, limit=30)
 
-    messages = [{"role": "system", "content": system_prompt}]
+    messages = []
     if len(history) > 1:
         messages.extend(history[:-1])
     messages.append({"role": "user", "content": user_content})
@@ -467,39 +433,43 @@ async def run_agent(chat_id: int, user_content: str | list, status_callback=None
     # Agent loop
     for round_num in range(max_rounds):
         try:
-            response = await _call_llm(client, model, messages)
+            response = await _call_llm(client, model, system_prompt, messages)
         except Exception as e:
             logger.error(f"LLM API error: {e}")
             return f"Sorry, I hit an error: {e}"
 
-        if response is None or not response.choices:
+        if response is None or not response.content:
             return "Sorry, I couldn't get a response."
 
-        choice = response.choices[0]
-        assistant_message = choice.message
+        # Parse response content blocks
+        tool_blocks = [
+            {"id": b.id, "name": b.name, "input": b.input}
+            for b in response.content if b.type == "tool_use"
+        ]
+        text_blocks = [b.text for b in response.content if b.type == "text"]
 
         # No tool calls — we have the final answer
-        if not assistant_message.tool_calls:
-            reply = assistant_message.content or ""
+        if not tool_blocks:
+            reply = "\n".join(text_blocks)
             db.save_message(chat_id, "assistant", reply)
-            # Trigger summarization check in background
-            asyncio.create_task(_maybe_summarize(client, model, chat_id))
+            asyncio.create_task(_maybe_summarize(client, model, system_prompt, chat_id))
             return reply
 
-        # Process tool calls in parallel
-        messages.append(assistant_message)
-        tool_messages = await _execute_tools_parallel(
-            assistant_message.tool_calls, chat_id, status_callback
-        )
-        messages.extend(tool_messages)
+        # Store assistant response with tool use blocks, then process tools
+        messages.append({"role": "assistant", "content": _response_to_content_dicts(response)})
+        tool_results = await _execute_tools_parallel(tool_blocks, chat_id, status_callback)
+        messages.append({"role": "user", "content": tool_results})
 
     # Exhausted tool rounds — get final answer without tools
     try:
-        response = await client.chat.completions.create(
+        response = await client.messages.create(
             model=model,
-            messages=messages,
+            max_tokens=4096,
+            system=[{"type": "text", "text": system_prompt}],
+            messages=_sanitize_messages(messages),
         )
-        reply = response.choices[0].message.content or "I ran out of steps but here's what I found."
+        text_blocks = [b.text for b in response.content if b.type == "text"]
+        reply = "\n".join(text_blocks) if text_blocks else "I ran out of steps but here's what I found."
     except Exception as e:
         reply = "I hit the tool round limit and encountered an error."
 
@@ -507,7 +477,7 @@ async def run_agent(chat_id: int, user_content: str | list, status_callback=None
     return reply
 
 
-async def _maybe_summarize(client, model, chat_id: int):
+async def _maybe_summarize(client, model, system_prompt, chat_id: int):
     """Summarize older messages if conversation is getting long."""
     try:
         msg_count = db.get_message_count(chat_id)
@@ -522,18 +492,17 @@ async def _maybe_summarize(client, model, chat_id: int):
         existing_summary = db.get_conversation_summary(chat_id) or ""
         text_block = "\n".join(f"{m['role']}: {m['content']}" for m in old_messages[:20])
 
-        summary_prompt = [
-            {"role": "system", "content": "Summarize this conversation excerpt in 3-5 sentences. Preserve key facts, decisions, and context. Be concise."},
-            {"role": "user", "content": f"Previous summary:\n{existing_summary}\n\nNew messages:\n{text_block}"},
-        ]
-
-        response = await client.chat.completions.create(
+        response = await client.messages.create(
             model=model,
-            messages=summary_prompt,
             max_tokens=300,
+            system=[{"type": "text", "text": "Summarize this conversation excerpt in 3-5 sentences. Preserve key facts, decisions, and context. Be concise."}],
+            messages=[
+                {"role": "user", "content": f"Previous summary:\n{existing_summary}\n\nNew messages:\n{text_block}"},
+            ],
         )
-        if response and response.choices:
-            summary = response.choices[0].message.content
+        if response and response.content:
+            text_blocks = [b.text for b in response.content if b.type == "text"]
+            summary = "\n".join(text_blocks)
             db.save_conversation_summary(chat_id, summary)
             # Clean up old messages that have been summarized
             db.trim_old_messages(chat_id, keep_recent=30)

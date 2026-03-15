@@ -659,46 +659,42 @@ def create_web_app() -> FastAPI:
         if not _check_auth(request):
             raise HTTPException(status_code=401, detail="Unauthorized")
 
-        from config import OPENAI_API_KEY, OPENWEBUI_URL, OPENWEBUI_API_KEY, MODEL_ID
-        from agent import _get_tool_client, _get_effective_tool_schemas, _get_client, _get_model
+        from anthropic import AsyncAnthropic
+        from config import ANTHROPIC_API_KEY, CLAUDE_MODEL, MODEL_ID
+        from agent import _get_effective_tool_schemas, _get_model
+
+        model = _get_model()
 
         diag = {
-            "openai_key_set": bool(OPENAI_API_KEY),
-            "openwebui_url_set": bool(OPENWEBUI_URL),
-            "openwebui_key_set": bool(OPENWEBUI_API_KEY),
-            "model_id": MODEL_ID or "(auto-detect)",
+            "anthropic_key_set": bool(ANTHROPIC_API_KEY),
+            "model": model,
             "db_system_prompt_set": bool(db.get_setting("system_prompt", "").strip()),
             "db_system_prompt_extra": bool(db.get_setting("system_prompt_extra", "").strip()),
             "developer_mode": db.get_setting("developer_mode", "false"),
             "effective_tools_count": len(_get_effective_tool_schemas()),
             "registered_tools": list(TOOL_REGISTRY.keys()),
+            "tool_backend": "anthropic",
         }
 
         # Test tool calling
-        tool_client, tool_backend = _get_tool_client()
-        diag["tool_backend"] = tool_backend
-        tool_model = MODEL_ID if tool_backend != "openai" else (MODEL_ID if MODEL_ID and MODEL_ID.startswith("gpt") else "gpt-4o")
-        diag["tool_model"] = tool_model
-
         try:
-            test_response = await tool_client.chat.completions.create(
-                model=tool_model,
+            test_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+            test_response = await test_client.messages.create(
+                model=model,
+                max_tokens=100,
                 messages=[{"role": "user", "content": "What is 2+2? Use the think tool to reason about it."}],
                 tools=[{
-                    "type": "function",
-                    "function": {
-                        "name": "think",
-                        "description": "Think step by step",
-                        "parameters": {"type": "object", "properties": {"thought": {"type": "string"}}, "required": ["thought"]},
-                    },
+                    "name": "think",
+                    "description": "Think step by step",
+                    "input_schema": {"type": "object", "properties": {"thought": {"type": "string"}}, "required": ["thought"]},
                 }],
-                max_tokens=100,
             )
-            if test_response and test_response.choices:
-                msg = test_response.choices[0].message
+            if test_response and test_response.content:
+                has_tc = any(b.type == "tool_use" for b in test_response.content)
+                text_blocks = [b.text for b in test_response.content if b.type == "text"]
                 diag["tool_test"] = "PASS"
-                diag["tool_test_used_tool"] = bool(msg.tool_calls)
-                diag["tool_test_content"] = msg.content[:200] if msg.content else None
+                diag["tool_test_used_tool"] = has_tc
+                diag["tool_test_content"] = text_blocks[0][:200] if text_blocks else None
             else:
                 diag["tool_test"] = "FAIL - empty response"
         except Exception as e:

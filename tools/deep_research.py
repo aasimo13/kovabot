@@ -13,9 +13,9 @@ import re
 from urllib.parse import urlparse, quote
 
 import aiohttp
-from openai import AsyncOpenAI
+from anthropic import AsyncAnthropic
 
-from config import OPENAI_API_KEY, BRAVE_API_KEY
+from config import ANTHROPIC_API_KEY, BRAVE_API_KEY, CLAUDE_MODEL
 
 try:
     from config import GITHUB_TOKEN
@@ -61,14 +61,14 @@ USER_AGENT = (
 
 async def deep_research(topic: str, depth: str = "standard", chat_id: int = 0) -> str:
     """Perform comprehensive multi-source research on a topic."""
-    if not OPENAI_API_KEY:
-        return "Error: OPENAI_API_KEY not configured."
+    if not ANTHROPIC_API_KEY:
+        return "Error: ANTHROPIC_API_KEY not configured."
     if not BRAVE_API_KEY:
         return "Error: BRAVE_API_KEY not configured."
 
     depth = depth if depth in DEPTH_CONFIG else "standard"
     cfg = DEPTH_CONFIG[depth]
-    client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+    client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     search_results = []
 
     try:
@@ -140,23 +140,22 @@ async def deep_research(topic: str, depth: str = "standard", chat_id: int = 0) -
 # Topic Classification
 # ---------------------------------------------------------------------------
 
-async def _classify_topic(client: AsyncOpenAI, topic: str) -> bool:
+async def _classify_topic(client: AsyncAnthropic, topic: str) -> bool:
     """Determine if a topic is code/programming-related."""
     try:
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+        response = await client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=10,
+            system=[{"type": "text", "text": (
+                "Classify whether the following topic is related to programming, "
+                "software development, coding, APIs, libraries, frameworks, DevOps, "
+                "or technical documentation. Reply with only 'code' or 'general'."
+            )}],
             messages=[
-                {"role": "system", "content": (
-                    "Classify whether the following topic is related to programming, "
-                    "software development, coding, APIs, libraries, frameworks, DevOps, "
-                    "or technical documentation. Reply with only 'code' or 'general'."
-                )},
                 {"role": "user", "content": topic},
             ],
-            max_tokens=10,
-            temperature=0,
         )
-        answer = response.choices[0].message.content.strip().lower()
+        answer = response.content[0].text.strip().lower()
         return "code" in answer
     except Exception as e:
         logger.debug(f"Topic classification error: {e}")
@@ -179,8 +178,8 @@ async def _classify_topic(client: AsyncOpenAI, topic: str) -> bool:
 # Query Generation
 # ---------------------------------------------------------------------------
 
-async def _generate_queries(client: AsyncOpenAI, topic: str, count: int, is_code: bool) -> list[str]:
-    """Use gpt-4o-mini to generate diverse search queries."""
+async def _generate_queries(client: AsyncAnthropic, topic: str, count: int, is_code: bool) -> list[str]:
+    """Use Claude to generate diverse search queries."""
     if is_code:
         system_msg = (
             "Generate diverse search queries to thoroughly research a programming/technical topic. "
@@ -201,16 +200,15 @@ async def _generate_queries(client: AsyncOpenAI, topic: str, count: int, is_code
         )
 
     try:
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+        response = await client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=400,
+            system=[{"type": "text", "text": system_msg}],
             messages=[
-                {"role": "system", "content": system_msg},
                 {"role": "user", "content": f"Topic: {topic}\nGenerate {count} search queries."},
             ],
-            max_tokens=400,
-            temperature=0.7,
         )
-        text = response.choices[0].message.content.strip()
+        text = response.content[0].text.strip()
         # Try JSON parse first
         try:
             queries = json.loads(text)
@@ -757,9 +755,9 @@ def _format_search_only_report(topic: str, results: list[dict]) -> str:
 # Synthesis
 # ---------------------------------------------------------------------------
 
-async def _synthesize(client: AsyncOpenAI, topic: str, sources: list[dict],
+async def _synthesize(client: AsyncAnthropic, topic: str, sources: list[dict],
                       depth: str, is_code: bool, verification_notes: str = "") -> str:
-    """Use gpt-4o-mini to synthesize sources into a structured report."""
+    """Use Claude to synthesize sources into a structured report."""
     # Build source context
     source_blocks = []
     for i, src in enumerate(sources, 1):
@@ -812,16 +810,16 @@ async def _synthesize(client: AsyncOpenAI, topic: str, sources: list[dict],
         user_content += f"\n\n---\n\n{verification_notes}"
 
     try:
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+        response = await client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=3000,
+            system=[{"type": "text", "text": system_prompt}],
             messages=[
-                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
             ],
-            max_tokens=3000,
-            temperature=0.3,
         )
-        report = response.choices[0].message.content.strip()
+        text_blocks = [b.text for b in response.content if b.type == "text"]
+        report = "\n".join(text_blocks).strip()
         return report
     except Exception as e:
         logger.error(f"Synthesis error: {e}")

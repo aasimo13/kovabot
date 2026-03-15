@@ -1,18 +1,19 @@
 import asyncio
 import json
 import logging
+import inspect
 import time
 
-from openai import AsyncOpenAI
+from anthropic import AsyncAnthropic
 
-from config import OPENAI_API_KEY
+from config import ANTHROPIC_API_KEY, CLAUDE_MODEL
 
 logger = logging.getLogger(__name__)
 
 MAX_ROUNDS = 10
 TIMEOUT_SECONDS = 120
 MAX_CONCURRENT = 3
-SUB_AGENT_MODEL = "gpt-4o-mini"
+SUB_AGENT_MODEL = CLAUDE_MODEL
 
 # Restricted tool set for sub-agents — read-only + execution, no high-impact actions
 SUB_AGENT_TOOLS = {
@@ -37,49 +38,73 @@ def _get_sub_agent_schemas() -> list[dict]:
     return [s for s in TOOL_SCHEMAS if s["function"]["name"] in SUB_AGENT_TOOLS]
 
 
+def _openai_to_anthropic_tools(openai_schemas: list[dict]) -> list[dict]:
+    """Convert OpenAI-format tool schemas to Anthropic format."""
+    tools = []
+    for s in openai_schemas:
+        tools.append({
+            "name": s["function"]["name"],
+            "description": s["function"]["description"],
+            "input_schema": s["function"]["parameters"],
+        })
+    return tools
+
+
 async def _run_sub_agent(task: str, context: str, chat_id: int) -> str:
     """Run a mini agent loop: LLM → tools → LLM → ... → final answer."""
     from tools import TOOL_REGISTRY
-    import inspect
     import db
 
-    client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+    client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     schemas = _get_sub_agent_schemas()
+    anthropic_tools = _openai_to_anthropic_tools(schemas) if schemas else None
 
     user_message = task
     if context:
         user_message = f"{task}\n\nContext:\n{context}"
 
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_message},
     ]
 
     for round_num in range(MAX_ROUNDS):
-        response = await client.chat.completions.create(
+        kwargs = dict(
             model=SUB_AGENT_MODEL,
+            max_tokens=4096,
+            system=[{"type": "text", "text": SYSTEM_PROMPT}],
             messages=messages,
-            tools=schemas if schemas else None,
-            tool_choice="auto" if schemas else None,
         )
+        if anthropic_tools:
+            kwargs["tools"] = anthropic_tools
+            kwargs["tool_choice"] = {"type": "auto"}
 
-        if not response or not response.choices:
+        response = await client.messages.create(**kwargs)
+
+        if not response or not response.content:
             return "Sub-agent received empty response from LLM."
 
-        msg = response.choices[0].message
+        # Parse response
+        tool_blocks = [b for b in response.content if b.type == "tool_use"]
+        text_blocks = [b.text for b in response.content if b.type == "text"]
 
         # No tool calls — final answer
-        if not msg.tool_calls:
-            return msg.content or ""
+        if not tool_blocks:
+            return "\n".join(text_blocks)
+
+        # Store assistant response
+        content_dicts = []
+        for b in response.content:
+            if b.type == "text":
+                content_dicts.append({"type": "text", "text": b.text})
+            elif b.type == "tool_use":
+                content_dicts.append({"type": "tool_use", "id": b.id, "name": b.name, "input": b.input})
+        messages.append({"role": "assistant", "content": content_dicts})
 
         # Process tool calls sequentially within sub-agent
-        messages.append(msg)
-        for tool_call in msg.tool_calls:
-            fn_name = tool_call.function.name
-            try:
-                fn_args = json.loads(tool_call.function.arguments)
-            except json.JSONDecodeError:
-                fn_args = {}
+        tool_results = []
+        for block in tool_blocks:
+            fn_name = block.name
+            fn_args = block.input
 
             logger.info(f"Sub-agent tool: {fn_name}({fn_args})")
 
@@ -99,11 +124,13 @@ async def _run_sub_agent(task: str, context: str, chat_id: int) -> str:
                     logger.error(f"Sub-agent tool {fn_name} error: {e}")
                     result = f"Tool error: {e}"
 
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": block.id,
                 "content": result,
             })
+
+        messages.append({"role": "user", "content": tool_results})
 
     # Rounds exhausted — one final no-tools call to summarize
     try:
@@ -111,12 +138,24 @@ async def _run_sub_agent(task: str, context: str, chat_id: int) -> str:
             "role": "user",
             "content": "You've used all your tool rounds. Summarize your findings so far as your final answer.",
         })
-        response = await client.chat.completions.create(
+        # Merge consecutive user messages for Anthropic
+        if len(messages) >= 2 and messages[-2]["role"] == "user":
+            prev = messages[-2]
+            last = messages.pop()
+            if isinstance(prev["content"], list):
+                prev["content"].append({"type": "text", "text": last["content"]})
+            elif isinstance(prev["content"], str):
+                prev["content"] = prev["content"] + "\n" + last["content"]
+
+        response = await client.messages.create(
             model=SUB_AGENT_MODEL,
+            max_tokens=4096,
+            system=[{"type": "text", "text": SYSTEM_PROMPT}],
             messages=messages,
         )
-        if response and response.choices:
-            return response.choices[0].message.content or "Sub-agent exhausted rounds with no summary."
+        if response and response.content:
+            text_blocks = [b.text for b in response.content if b.type == "text"]
+            return "\n".join(text_blocks) if text_blocks else "Sub-agent exhausted rounds with no summary."
     except Exception as e:
         logger.error(f"Sub-agent final summary error: {e}")
 
@@ -131,8 +170,8 @@ async def spawn_agent(task: str, context: str = "", chat_id: int = 0) -> str:
     """
     if not task:
         return "Error: task parameter is required."
-    if not OPENAI_API_KEY:
-        return "Error: OpenAI API key not configured — sub-agents require direct OpenAI access."
+    if not ANTHROPIC_API_KEY:
+        return "Error: Anthropic API key not configured — sub-agents require API access."
 
     # Import here to log to parent diagnostics
     from agent import _recent_llm_calls
