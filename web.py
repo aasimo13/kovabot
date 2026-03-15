@@ -713,11 +713,13 @@ def create_web_app() -> FastAPI:
             SYSTEM_PROMPT, USER_TIMEZONE, MAX_TOOL_ROUNDS,
             TTS_ENABLED, TTS_VOICE, TTS_MODEL,
             BRIEFING_ENABLED, BRIEFING_TIME, FOLLOW_UP_ENABLED,
+            CLAUDE_MODEL,
         )
 
         defaults = {
             "system_prompt": SYSTEM_PROMPT,
             "system_prompt_extra": "",
+            "claude_model": CLAUDE_MODEL,
             "user_timezone": USER_TIMEZONE,
             "max_tool_rounds": str(MAX_TOOL_ROUNDS),
             "tts_enabled": str(TTS_ENABLED).lower(),
@@ -747,7 +749,8 @@ def create_web_app() -> FastAPI:
 
         body = await request.json()
         allowed_keys = {
-            "system_prompt_extra", "user_timezone", "max_tool_rounds",
+            "system_prompt_extra", "claude_model", "user_timezone",
+            "max_tool_rounds",
             "tts_enabled", "tts_voice", "tts_model",
             "briefing_enabled", "briefing_time", "follow_up_enabled",
             "developer_mode",

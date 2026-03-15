@@ -88,7 +88,10 @@ def _get_client() -> AsyncAnthropic:
 
 
 def _get_model() -> str:
-    return MODEL_ID if MODEL_ID else CLAUDE_MODEL
+    if MODEL_ID:
+        return MODEL_ID
+    db_model = db.get_setting("claude_model", "")
+    return db_model if db_model else CLAUDE_MODEL
 
 
 def _openai_to_anthropic_tools(openai_schemas: list[dict]) -> list[dict]:

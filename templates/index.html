@@ -172,6 +172,15 @@
                         <p class="setting-hint">Extra instructions appended to the core prompt. Use this to customize behavior without touching the core prompt.</p>
                         <textarea class="setting-textarea" id="set-system-prompt-extra" rows="4" placeholder="e.g. Always respond in Spanish. My name is Aaron. I prefer concise answers."></textarea>
                     </div>
+                    <div class="setting-group">
+                        <label>Model</label>
+                        <p class="setting-hint">Claude model used for all LLM calls. Haiku is fast & cheap, Sonnet is more capable.</p>
+                        <select class="setting-select" id="set-claude-model">
+                            <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 (fast, $1/$5 per MTok)</option>
+                            <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5 ($3/$15 per MTok)</option>
+                            <option value="claude-opus-4-6">Claude Opus 4.6 ($15/$75 per MTok)</option>
+                        </select>
+                    </div>
                     <div class="setting-row">
                         <div class="setting-group">
                             <label>Timezone</label>
@@ -929,6 +938,7 @@ async function loadSettings() {
         const s = await r.json();
         document.getElementById('set-system-prompt').value = s.system_prompt || '';
         document.getElementById('set-system-prompt-extra').value = s.system_prompt_extra || '';
+        document.getElementById('set-claude-model').value = s.claude_model || 'claude-haiku-4-5-20251001';
         document.getElementById('set-timezone').value = s.user_timezone || 'UTC';
         document.getElementById('set-max-rounds').value = s.max_tool_rounds || '10';
         document.getElementById('set-tts-enabled').checked = s.tts_enabled === 'true';
@@ -955,6 +965,7 @@ async function saveSettings(section) {
     if (section === 'general') {
         data = {
             system_prompt_extra: document.getElementById('set-system-prompt-extra').value,
+            claude_model: document.getElementById('set-claude-model').value,
             user_timezone: document.getElementById('set-timezone').value,
             max_tool_rounds: document.getElementById('set-max-rounds').value,
         };
