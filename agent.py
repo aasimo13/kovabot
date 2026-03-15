@@ -71,6 +71,12 @@ TOOL_STATUS_LABELS = {
     "run_command": "Running command",
     "think": "Thinking",
     "deep_research": "Researching in depth",
+    # Coding Agent
+    "read_file": "Reading file",
+    "write_file": "Writing file",
+    "edit_file": "Editing file",
+    "list_directory": "Listing workspace",
+    "execute_code": "Running code",
 }
 
 
@@ -160,7 +166,7 @@ async def _execute_tool(tool_name: str, arguments: dict, chat_id: int) -> str:
     return f"Unknown tool: {tool_name}"
 
 
-DEVELOPER_TOOLS = {"run_command", "execute_python"}
+DEVELOPER_TOOLS = {"run_command", "execute_python", "read_file", "write_file", "edit_file", "list_directory", "execute_code"}
 
 
 def _get_effective_tool_schemas() -> list[dict]:

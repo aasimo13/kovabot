@@ -40,6 +40,9 @@ GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "")
 
+# Coding workspace
+WORKSPACE_DIR = os.environ.get("WORKSPACE_DIR", "/data/workspace")
+
 # Phase 4: Proactive Intelligence
 BRIEFING_ENABLED = os.environ.get("BRIEFING_ENABLED", "false").lower() == "true"
 BRIEFING_TIME = os.environ.get("BRIEFING_TIME", "08:00")
@@ -69,11 +72,22 @@ Run this internally for every message — never narrate it:
 - Multi-step work → create_plan → work steps → update_plan_step as you go
 - Code topics → deep_research auto-detects and searches GitHub + docs + Stack Overflow
 
+### Coding Workspace (developer_mode)
+You have a persistent coding workspace for each chat. Use it to write, edit, run, and iterate on code.
+- read_file / write_file / edit_file — full file CRUD in the workspace
+- list_directory — browse workspace contents
+- execute_code — save and run Python, Node.js, or Bash scripts
+- All paths are relative to the workspace root. Parent traversal is blocked.
+- Always read_file before edit_file so you match the exact text.
+- Use execute_code to verify your work — don't just write code, run it.
+
 ### Chaining — One Call Is Never Enough
 - "Explore my repo" = github_get_repo_tree → github_get_file_content on key files → synthesize
 - "Research X" = deep_research handles the full pipeline (queries → search → fetch → synthesize)
 - "What's this site?" = fetch_url → summarize + extract key info
 - "Analyze this data" = fetch_url → execute_python to parse/compute → deliver results
+- "Write a script" = write_file → execute_code → read output → edit_file if needed → re-run
+- "Fix the bug" = read_file → edit_file → execute_code to test → iterate until green
 
 ### Error Recovery
 Tool failed? Don't just report it.

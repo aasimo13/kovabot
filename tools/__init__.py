@@ -13,6 +13,7 @@ from tools.agent_introspection import get_agent_context
 from tools.cli import run_command
 from tools.think import think
 from tools.deep_research import deep_research
+from tools.coding import read_file, write_file, edit_file, list_directory, execute_code
 
 # Maps function name → callable
 TOOL_REGISTRY: dict[str, callable] = {
@@ -37,6 +38,11 @@ TOOL_REGISTRY: dict[str, callable] = {
     "run_command": run_command,
     "think": think,
     "deep_research": deep_research,
+    "read_file": read_file,
+    "write_file": write_file,
+    "edit_file": edit_file,
+    "list_directory": list_directory,
+    "execute_code": execute_code,
 }
 
 # Conditionally register GitHub tools
@@ -512,6 +518,117 @@ TOOL_SCHEMAS = [
                     },
                 },
                 "required": ["topic"],
+            },
+        },
+    },
+    # Coding Agent Tools
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Read a file from the coding workspace. Returns content with line numbers. Use before editing.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "File path relative to workspace root, e.g. 'main.py' or 'src/app.js'.",
+                    },
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": "Create or overwrite a file in the coding workspace. Auto-creates parent directories. Use for new files or full rewrites.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "File path relative to workspace root.",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Full file content to write.",
+                    },
+                },
+                "required": ["path", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "edit_file",
+            "description": "Find-and-replace in a workspace file. old_text must match exactly one location. Always read_file first to get exact text.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "File path relative to workspace root.",
+                    },
+                    "old_text": {
+                        "type": "string",
+                        "description": "Exact text to find (must match once). Include enough surrounding context for uniqueness.",
+                    },
+                    "new_text": {
+                        "type": "string",
+                        "description": "Replacement text.",
+                    },
+                },
+                "required": ["path", "old_text", "new_text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_directory",
+            "description": "List files and directories in the coding workspace. Shows file sizes.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Directory path relative to workspace root. Defaults to root.",
+                    },
+                    "recursive": {
+                        "type": "boolean",
+                        "description": "List all files recursively (default false).",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_code",
+            "description": "Write code to the workspace and execute it. Supports python, node/javascript, bash. Saves the file and runs it with a 30s timeout. Use for running scripts, tests, and verifying code.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "language": {
+                        "type": "string",
+                        "enum": ["python", "javascript", "node", "bash"],
+                        "description": "Programming language / runtime.",
+                    },
+                    "code": {
+                        "type": "string",
+                        "description": "Source code to execute.",
+                    },
+                    "filename": {
+                        "type": "string",
+                        "description": "Optional filename (default: main.py/js/sh). Use to organize multi-file projects.",
+                    },
+                },
+                "required": ["language", "code"],
             },
         },
     },
