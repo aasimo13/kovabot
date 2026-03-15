@@ -14,6 +14,7 @@ from tools.cli import run_command
 from tools.think import think
 from tools.deep_research import deep_research
 from tools.coding import read_file, write_file, edit_file, list_directory, execute_code
+from tools.sub_agent import spawn_agent
 
 # Maps function name → callable
 TOOL_REGISTRY: dict[str, callable] = {
@@ -43,6 +44,7 @@ TOOL_REGISTRY: dict[str, callable] = {
     "edit_file": edit_file,
     "list_directory": list_directory,
     "execute_code": execute_code,
+    "spawn_agent": spawn_agent,
 }
 
 # Conditionally register GitHub tools
@@ -629,6 +631,28 @@ TOOL_SCHEMAS = [
                     },
                 },
                 "required": ["language", "code"],
+            },
+        },
+    },
+    # Sub-Agent
+    {
+        "type": "function",
+        "function": {
+            "name": "spawn_agent",
+            "description": "Spawn an independent sub-agent to work on a specific task. Sub-agents have their own reasoning loop and can use search, code execution, and file tools. Use for tasks that benefit from focused, independent work. Multiple spawn_agent calls execute in parallel.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task": {
+                        "type": "string",
+                        "description": "What the sub-agent should accomplish.",
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": "Background info the sub-agent needs (it has NO access to our conversation).",
+                    },
+                },
+                "required": ["task"],
             },
         },
     },

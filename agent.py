@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 # Store recent LLM call diagnostics for /diagnostics command
 _recent_llm_calls: deque[dict] = deque(maxlen=10)
 
+# Lock for status callback to prevent concurrent Telegram message edits
+_status_lock = asyncio.Lock()
+
 TOOL_STATUS_LABELS = {
     "brave_search": "Searching the web",
     "store_fact": "Saving to memory",
@@ -77,6 +80,7 @@ TOOL_STATUS_LABELS = {
     "edit_file": "Editing file",
     "list_directory": "Listing workspace",
     "execute_code": "Running code",
+    "spawn_agent": "Running sub-agent",
 }
 
 
@@ -166,7 +170,59 @@ async def _execute_tool(tool_name: str, arguments: dict, chat_id: int) -> str:
     return f"Unknown tool: {tool_name}"
 
 
-DEVELOPER_TOOLS = {"run_command", "execute_python", "read_file", "write_file", "edit_file", "list_directory", "execute_code"}
+async def _execute_tools_parallel(tool_calls, chat_id: int, status_callback=None) -> list[dict]:
+    """Execute multiple tool calls concurrently via asyncio.gather.
+    Returns tool-role messages in the original order."""
+    sem = asyncio.Semaphore(5)
+
+    async def _run_one(tool_call):
+        fn_name = tool_call.function.name
+        try:
+            fn_args = json.loads(tool_call.function.arguments)
+        except json.JSONDecodeError:
+            fn_args = {}
+
+        logger.info(f"Tool call: {fn_name}({fn_args})")
+
+        if status_callback:
+            label = TOOL_STATUS_LABELS.get(fn_name, f"Using {fn_name}")
+            async with _status_lock:
+                await status_callback(f"{label}...")
+
+        async with sem:
+            try:
+                result = await _execute_tool(fn_name, fn_args, chat_id)
+            except Exception as e:
+                logger.error(f"Parallel tool {fn_name} error: {e}")
+                result = f"Tool error: {e}"
+
+        if fn_name != "think":
+            db.log_tool_call(chat_id, fn_name, json.dumps(fn_args), result)
+
+        return {
+            "role": "tool",
+            "tool_call_id": tool_call.id,
+            "content": result,
+        }
+
+    tasks = [_run_one(tc) for tc in tool_calls]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Convert any unexpected exceptions to error messages
+    messages = []
+    for i, r in enumerate(results):
+        if isinstance(r, Exception):
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_calls[i].id,
+                "content": f"Tool error: {r}",
+            })
+        else:
+            messages.append(r)
+    return messages
+
+
+DEVELOPER_TOOLS = {"run_command", "execute_python", "read_file", "write_file", "edit_file", "list_directory", "execute_code", "spawn_agent"}
 
 
 def _get_effective_tool_schemas() -> list[dict]:
@@ -430,33 +486,12 @@ async def run_agent(chat_id: int, user_content: str | list, status_callback=None
             asyncio.create_task(_maybe_summarize(client, model, chat_id))
             return reply
 
-        # Process tool calls
+        # Process tool calls in parallel
         messages.append(assistant_message)
-
-        for tool_call in assistant_message.tool_calls:
-            fn_name = tool_call.function.name
-            try:
-                fn_args = json.loads(tool_call.function.arguments)
-            except json.JSONDecodeError:
-                fn_args = {}
-
-            logger.info(f"Tool call: {fn_name}({fn_args})")
-
-            # Send status update
-            if status_callback:
-                label = TOOL_STATUS_LABELS.get(fn_name, f"Using {fn_name}")
-                await status_callback(f"{label}...")
-
-            result = await _execute_tool(fn_name, fn_args, chat_id)
-            # Don't log internal reasoning to tool call history
-            if fn_name != "think":
-                db.log_tool_call(chat_id, fn_name, json.dumps(fn_args), result)
-
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": result,
-            })
+        tool_messages = await _execute_tools_parallel(
+            assistant_message.tool_calls, chat_id, status_callback
+        )
+        messages.extend(tool_messages)
 
     # Exhausted tool rounds — get final answer without tools
     try:
