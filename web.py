@@ -520,10 +520,15 @@ def create_web_app() -> FastAPI:
             if not verify_signature(raw_body, signature, WEBHOOK_SECRET):
                 raise HTTPException(status_code=401, detail="Invalid signature")
 
-        try:
-            payload = json.loads(raw_body)
-        except (json.JSONDecodeError, TypeError):
-            payload = {"raw": raw_body.decode("utf-8", errors="replace")[:1000]}
+        content_type = request.headers.get("content-type", "")
+        if "application/x-www-form-urlencoded" in content_type:
+            form = await request.form()
+            payload = dict(form)
+        else:
+            try:
+                payload = json.loads(raw_body)
+            except (json.JSONDecodeError, TypeError):
+                payload = {"raw": raw_body.decode("utf-8", errors="replace")[:1000]}
 
         chat_id = WEB_CHAT_ID or 0
 
@@ -611,6 +616,13 @@ def create_web_app() -> FastAPI:
         integrations["homeassistant"] = {
             "configured": bool(HA_URL and HA_TOKEN),
             "connected": bool(HA_URL and HA_TOKEN),
+        }
+
+        # Twilio SMS
+        from config import TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER
+        integrations["twilio"] = {
+            "configured": bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER),
+            "connected": bool(TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER),
         }
 
         return JSONResponse({"integrations": integrations})

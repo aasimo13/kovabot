@@ -84,6 +84,18 @@ try:
 except Exception:
     pass
 
+# Conditionally register Twilio SMS tools
+try:
+    from config import TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER
+    if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER:
+        from tools.twilio_sms import send_sms, get_sms_history
+        TOOL_REGISTRY.update({
+            "send_sms": send_sms,
+            "get_sms_history": get_sms_history,
+        })
+except Exception:
+    pass
+
 # Conditionally register Google tools
 try:
     from config import GOOGLE_CLIENT_ID
@@ -834,6 +846,45 @@ try:
                             "hours": {"type": "integer", "description": "Hours of history to fetch (default 24)."},
                         },
                         "required": ["entity_id"],
+                    },
+                },
+            },
+        ])
+except Exception:
+    pass
+
+# Conditionally add Twilio SMS tool schemas
+try:
+    from config import TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER
+    if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER:
+        TOOL_SCHEMAS.extend([
+            {
+                "type": "function",
+                "function": {
+                    "name": "send_sms",
+                    "description": "Send an SMS text message to a phone number via Twilio. This is a high-impact action — use request_confirmation before sending.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "to": {"type": "string", "description": "Recipient phone number in E.164 format (e.g. '+15551234567')."},
+                            "body": {"type": "string", "description": "The text message to send."},
+                        },
+                        "required": ["to", "body"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_sms_history",
+                    "description": "Fetch recent SMS messages exchanged with a phone number.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "phone_number": {"type": "string", "description": "Phone number in E.164 format (e.g. '+15551234567')."},
+                            "limit": {"type": "integer", "description": "Max messages to return (default 10)."},
+                        },
+                        "required": ["phone_number"],
                     },
                 },
             },

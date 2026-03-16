@@ -41,3 +41,11 @@ async def handle_generic_webhook(chat_id: int, payload: dict) -> str:
     event_type = payload.get("event", "unknown")
     summary = json.dumps(payload, indent=2)[:500]
     return f"Webhook received — event: {event_type}\n```\n{summary}\n```"
+
+
+@register_channel("twilio")
+async def handle_twilio_sms(chat_id: int, payload: dict) -> str:
+    """Handle incoming SMS from Twilio."""
+    from_number = payload.get("From", "unknown")
+    body = payload.get("Body", "")
+    return f"SMS from {from_number}: {body}"

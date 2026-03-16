@@ -1028,6 +1028,13 @@ async function loadIntegrations() {
         if (!ha.configured) html += '<div class="integration-hint">Set HA_URL and HA_TOKEN environment variables to enable</div>';
         html += '</div>';
 
+        // Twilio SMS
+        const tw = ig.twilio || {};
+        html += '<div class="integration-card"><div class="integration-header"><div class="integration-info"><div class="integration-icon" style="background:#0D9B4E;color:#fff">TW</div><div><div class="integration-name">Twilio SMS</div><div class="integration-desc">Send & Receive Text Messages</div></div></div>' +
+            '<span class="status-pill ' + (tw.connected ? 'connected' : 'off') + '">' + (tw.connected ? 'Connected' : 'Not Configured') + '</span></div>';
+        if (!tw.configured) html += '<div class="integration-hint">Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER environment variables to enable</div>';
+        html += '</div>';
+
         // Webhooks
         html += '<div class="integration-card"><div class="integration-header"><div class="integration-info"><div class="integration-icon webhook">WH</div><div><div class="integration-name">Webhooks</div><div class="integration-desc">Receive events from external services</div></div></div>' +
             '<span class="status-pill connected">Active</span></div>' +
